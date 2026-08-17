@@ -1,38 +1,28 @@
-# Polter-Zentrale Web V2
+# Polter-Zentrale Web V3
 
-## Neu in dieser Version
+Diese Version wurde gegen ALLE bisher vom Nutzer zugesandten PDF-Beispiele getestet.
 
-- komplette Bereitstellung kann nach Abfuhr gelöscht werden
-- einzelner Polter kann ebenfalls gelöscht werden
-- zusätzliche PDF-Formate:
-  - WBV Altötting-Burghausen
-  - FBG Isar-Lech / BA-xxx
-  - Unternehmensgruppe Toerring-Jettenbach / Fulcrum-Holzverwaltung
-  - BayernAtlas-Lagerort / WBV Pfarrkirchen
-  - verbesserter Parser für München/Stadtwerke München
-- GPS kann pro Polter manuell ergänzt oder korrigiert werden
-- Kartenlink kann gespeichert werden
+Unterstützte Formate:
+1. WBV Holzhandels GmbH / Wasserburg
+2. Landeshauptstadt München / Gemeindewald
+3. Stadtwerke München Wasser
+4. WBV Altötting-Burghausen
+5. FBG Isar-Lech / Bereitstellung BA-...
+6. Unternehmensgruppe Toerring-Jettenbach / Holzverwaltung
+7. WBV Pfarrkirchen / BayernAtlas-Lagerort
 
-## Wichtiger Sonderfall
+Wichtig:
+- Toerring-Jettenbach und BayernAtlas/Pfarrkirchen enthalten in den gelieferten PDFs keine
+  numerischen GPS-Koordinaten im Text. Diese Datensätze werden trotzdem vollständig
+  hinsichtlich Bereitstellung, Lieferant und Menge eingelesen und können manuell mit GPS ergänzt werden.
+- Lieferanten können in der linken Seitenleiste gefiltert werden.
+- Eine komplette Bereitstellung kann nach vollständiger Abfuhr gelöscht werden.
+- Einzelne Polter können ebenfalls gelöscht werden.
 
-Die Toerring/Fulcrum-Datei und die BayernAtlas-Lagerort-Datei enthalten im auslesbaren PDF
-keine numerischen GPS-Koordinaten. Die Polterdaten und Mengen werden trotzdem importiert.
-Beim BayernAtlas-Dokument wird der vorhandene Kartenlink übernommen. Numerische GPS-Daten
-können anschließend direkt in der App ergänzt werden.
-
-## Aktualisierung einer bereits veröffentlichten Streamlit-App
-
-1. `app.py`, `requirements.txt`, `.streamlit/config.toml` im GitHub-Repository ersetzen.
-2. Wenn Supabase bereits eingerichtet ist, `supabase_schema.sql` im Supabase SQL Editor ausführen.
-   Dadurch wird die neue Spalte `map_link` ergänzt.
-3. Änderungen in GitHub committen.
-4. Streamlit startet die App automatisch neu.
-
-## Bei einer komplett neuen Installation
-
-1. Dateien in GitHub hochladen.
-2. Streamlit Community Cloud mit `app.py` deployen.
-3. Optional Supabase anlegen und `supabase_schema.sql` ausführen.
-4. Streamlit Secrets:
-   SUPABASE_URL = "..."
-   SUPABASE_KEY = "..."
+AKTUALISIERUNG IN GITHUB:
+- app.py ersetzen
+- parsers.py neu hinzufügen/ersetzen
+- requirements.txt ersetzen
+- .streamlit/config.toml ersetzen
+- bei Supabase einmal supabase_schema.sql im SQL Editor ausführen
+- GitHub committen; Streamlit lädt danach automatisch neu.
