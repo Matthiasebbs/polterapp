@@ -1,48 +1,38 @@
-# Polter-Zentrale – browserbasierte Version
+# Polter-Zentrale Web V2
 
-Diese Version ist für einen Betrieb im Browser gedacht. Auf dem Firmenlaptop muss dann nichts installiert werden.
+## Neu in dieser Version
 
-## Funktionen
+- komplette Bereitstellung kann nach Abfuhr gelöscht werden
+- einzelner Polter kann ebenfalls gelöscht werden
+- zusätzliche PDF-Formate:
+  - WBV Altötting-Burghausen
+  - FBG Isar-Lech / BA-xxx
+  - Unternehmensgruppe Toerring-Jettenbach / Fulcrum-Holzverwaltung
+  - BayernAtlas-Lagerort / WBV Pfarrkirchen
+  - verbesserter Parser für München/Stadtwerke München
+- GPS kann pro Polter manuell ergänzt oder korrigiert werden
+- Kartenlink kann gespeichert werden
 
-- PDF-Upload per Drag & Drop
-- automatische Erkennung der aktuell eingebauten WBV- und München-Formate
-- Polter mit GPS-Koordinaten auf OpenStreetMap
-- Originalmenge aus PDF bleibt gespeichert
-- RM und FM je Polter manuell änderbar
-- Status: Offen / Eingeplant / In Abfuhr / Erledigt
-- interne Notizen
-- Suche und Filter
-- Google-Maps-Navigation
-- CSV-Export
-- Supabase-Unterstützung für dauerhafte Cloud-Speicherung
+## Wichtiger Sonderfall
 
-## Variante A – schnell testen über Streamlit Community Cloud
+Die Toerring/Fulcrum-Datei und die BayernAtlas-Lagerort-Datei enthalten im auslesbaren PDF
+keine numerischen GPS-Koordinaten. Die Polterdaten und Mengen werden trotzdem importiert.
+Beim BayernAtlas-Dokument wird der vorhandene Kartenlink übernommen. Numerische GPS-Daten
+können anschließend direkt in der App ergänzt werden.
 
-1. Kostenloses GitHub-Konto und Streamlit-Konto verwenden.
-2. Den Inhalt dieses Ordners in ein neues GitHub-Repository hochladen.
-3. Auf Streamlit Community Cloud eine neue App erstellen.
-4. Als Main file `app.py` wählen.
-5. Deploy drücken.
+## Aktualisierung einer bereits veröffentlichten Streamlit-App
 
-Ohne Supabase läuft die App im Testmodus. Daten können bei einem Neustart der Cloud-App verloren gehen.
+1. `app.py`, `requirements.txt`, `.streamlit/config.toml` im GitHub-Repository ersetzen.
+2. Wenn Supabase bereits eingerichtet ist, `supabase_schema.sql` im Supabase SQL Editor ausführen.
+   Dadurch wird die neue Spalte `map_link` ergänzt.
+3. Änderungen in GitHub committen.
+4. Streamlit startet die App automatisch neu.
 
-## Variante B – dauerhafte Speicherung mit Supabase
+## Bei einer komplett neuen Installation
 
-1. Kostenloses Supabase-Projekt anlegen.
-2. Im SQL Editor den Inhalt von `supabase_schema.sql` ausführen.
-3. In Streamlit Cloud unter Settings > Secrets eintragen:
-
-SUPABASE_URL = "https://DEIN-PROJEKT.supabase.co"
-SUPABASE_KEY = "DEIN-ANON-KEY"
-
-4. App neu starten.
-
-Dann bleiben Mengenänderungen, Status und Notizen dauerhaft gespeichert.
-
-## Datenschutz-Hinweis
-
-Die PDFs werden von der App nur verarbeitet; in dieser Version werden die PDF-Dateien selbst nicht dauerhaft gespeichert. In der Datenbank landen nur die ausgelesenen Polterdaten.
-
-## Für produktiven Firmeneinsatz
-
-Vor einem echten Produktivbetrieb sollte die Supabase-Sicherheitsregel eingeschränkt und ein Login ergänzt werden. Die mitgelieferte Policy ist bewusst einfach gehalten, damit die Testversion schnell funktioniert.
+1. Dateien in GitHub hochladen.
+2. Streamlit Community Cloud mit `app.py` deployen.
+3. Optional Supabase anlegen und `supabase_schema.sql` ausführen.
+4. Streamlit Secrets:
+   SUPABASE_URL = "..."
+   SUPABASE_KEY = "..."
