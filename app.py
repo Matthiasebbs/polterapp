@@ -1042,7 +1042,39 @@ with left:
                 popup=folium.Popup(pop, max_width=380),
             ).add_to(mp)
 
-        st_folium(mp, use_container_width=True, height=610, returned_objects=[])
+        map_state = st_folium(
+            mp,
+            use_container_width=True,
+            height=610,
+            returned_objects=["last_object_clicked_tooltip"]
+        )
+
+        # Wenn ein Polter auf der Karte angeklickt wird, dessen Tooltip auswerten
+        # und die passende Polter-ID für "3. Polter bearbeiten" vormerken.
+        clicked_tooltip = None
+        if isinstance(map_state, dict):
+            clicked_tooltip = map_state.get("last_object_clicked_tooltip")
+
+        if clicked_tooltip:
+            # Tooltip-Struktur:
+            # Lieferant · Frächter · Bereitstellung · Polter <Nummer>
+            clicked = str(clicked_tooltip)
+            clicked_match = view[
+                view.apply(
+                    lambda rr: (
+                        str(rr["lieferant"]) in clicked
+                        and str(rr["bereitstellung"]) in clicked
+                        and f"Polter {rr['polter_nr']}" in clicked
+                    ),
+                    axis=1
+                )
+            ]
+
+            if len(clicked_match) == 1:
+                clicked_id = int(clicked_match.iloc[0]["id"])
+                if st.session_state.get("_map_selected_polter_id") != clicked_id:
+                    st.session_state["_map_selected_polter_id"] = clicked_id
+                    st.rerun()
 
 with right:
     st.subheader("3. Polter bearbeiten")
@@ -1066,12 +1098,34 @@ with right:
             )
             opts[label] = int(r["id"])
 
+        option_labels = list(opts.keys())
+
+        # Falls der Benutzer vorher einen Kartenpunkt angeklickt hat,
+        # diesen Polter im Dropdown automatisch vorauswählen.
+        map_selected_id = st.session_state.get("_map_selected_polter_id")
+        default_index = 0
+
+        if map_selected_id is not None:
+            for i, label in enumerate(option_labels):
+                if opts[label] == int(map_selected_id):
+                    default_index = i
+                    break
+
+            # Den bisherigen Selectbox-Zustand entfernen, damit die Auswahl
+            # sichtbar auf den angeklickten Karten-Polter springt.
+            st.session_state.pop("edit_polter_selector", None)
+
         selected = st.selectbox(
             "Polter auswählen",
-            list(opts.keys()),
+            option_labels,
+            index=default_index,
             key="edit_polter_selector"
         )
         pid = opts[selected]
+
+        # Nach erfolgreicher Übernahme reicht die normale Dropdown-Auswahl weiter.
+        if map_selected_id is not None and pid == int(map_selected_id):
+            st.session_state.pop("_map_selected_polter_id", None)
 
         row_match = df[df["id"] == pid]
         if row_match.empty:
