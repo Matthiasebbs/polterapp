@@ -2065,27 +2065,73 @@ with right:
             render_polter_editor(pid, selected_row)
 
 
-st.subheader("4. Bereitstellungen")
-summary = (df.groupby(["lieferant","fraechter","bereitstellung"], dropna=False)
-           .agg(Polter=("id","count"),
-                RM_aktuell=("menge_rm_aktuell","sum"),
-                FM_EFm_aktuell=("kubatur_fm_aktuell","sum"))
-           .reset_index())
-st.dataframe(summary, use_container_width=True, hide_index=True)
+# ----------------------------------------------------------
+# 4. Bereitstellungen – standardmäßig eingeklappt
+# ----------------------------------------------------------
+with st.expander("4. Bereitstellungen", expanded=False):
+    summary = (
+        df.groupby(["lieferant", "fraechter", "bereitstellung"], dropna=False)
+        .agg(
+            Polter=("id", "count"),
+            RM_aktuell=("menge_rm_aktuell", "sum"),
+            FM_EFm_aktuell=("kubatur_fm_aktuell", "sum")
+        )
+        .reset_index()
+    )
 
-with st.expander("Komplette abgefahrene Bereitstellung löschen"):
-    keys = []
-    for _,r in summary.iterrows():
-        keys.append(f"{r['lieferant']} · {r['fraechter'] or '-'} · {r['bereitstellung']}")
-    choice = st.selectbox("Bereitstellung", keys)
-    idx = keys.index(choice)
-    chosen_row = summary.iloc[idx]
-    name = str(chosen_row["bereitstellung"])
-    st.warning(f"{int(chosen_row['Polter'])} Polter dieser Bereitstellung werden dauerhaft gelöscht.")
-    confirm = st.checkbox(f"Ja, {name} ist vollständig abgefahren.")
-    if st.button("🗑️ Bereitstellung löschen", disabled=not confirm):
-        delete_group(name)
-        st.rerun()
+    # Saubere deutsche Spaltenbezeichnungen.
+    summary_display = summary.rename(
+        columns={
+            "lieferant": "Lieferant",
+            "fraechter": "Frächter",
+            "bereitstellung": "Bereitstellung",
+            "RM_aktuell": "RM aktuell",
+            "FM_EFm_aktuell": "FM / EFm aktuell",
+        }
+    )
+
+    st.caption("Übersicht aller importierten Bereitstellungen und der aktuell vorhandenen Mengen.")
+    st.dataframe(
+        summary_display,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    with st.expander("Vollständig abgefahrene Bereitstellung löschen", expanded=False):
+        if summary.empty:
+            st.info("Keine Bereitstellungen vorhanden.")
+        else:
+            keys = []
+            for _, r in summary.iterrows():
+                keys.append(
+                    f"{r['lieferant']} · {r['fraechter'] or '-'} · {r['bereitstellung']}"
+                )
+
+            choice = st.selectbox(
+                "Bereitstellung auswählen",
+                keys,
+                key="delete_bereitstellung_select"
+            )
+            selected_idx = keys.index(choice)
+            chosen_row = summary.iloc[selected_idx]
+            name = str(chosen_row["bereitstellung"])
+
+            st.warning(
+                f"{int(chosen_row['Polter'])} Polter dieser Bereitstellung "
+                "werden dauerhaft gelöscht."
+            )
+            confirm = st.checkbox(
+                f"Ja, die Bereitstellung „{name}“ ist vollständig abgefahren.",
+                key="delete_bereitstellung_confirm"
+            )
+
+            if st.button(
+                "🗑️ Bereitstellung endgültig löschen",
+                disabled=not confirm,
+                key="delete_bereitstellung_button"
+            ):
+                delete_group(name)
+                st.rerun()
 
 st.subheader("5. Polterübersicht")
 
