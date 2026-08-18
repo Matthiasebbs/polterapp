@@ -1046,33 +1046,64 @@ with left:
             mp,
             use_container_width=True,
             height=610,
-            returned_objects=["last_object_clicked_tooltip"]
+            returned_objects=[
+                "last_object_clicked",
+                "last_object_clicked_tooltip"
+            ]
         )
 
-        # Wenn ein Polter auf der Karte angeklickt wird, dessen Tooltip auswerten
-        # und die passende Polter-ID für "3. Polter bearbeiten" vormerken.
-        clicked_tooltip = None
+        # Robuste Karten-Auswahl:
+        # CircleMarker-Klicks liefern zuverlässig die angeklickten Koordinaten.
+        # Darüber wird der passende Polter gesucht.
         if isinstance(map_state, dict):
+            clicked_obj = map_state.get("last_object_clicked")
             clicked_tooltip = map_state.get("last_object_clicked_tooltip")
 
-        if clicked_tooltip:
-            # Tooltip-Struktur:
-            # Lieferant · Frächter · Bereitstellung · Polter <Nummer>
-            clicked = str(clicked_tooltip)
-            clicked_match = view[
-                view.apply(
-                    lambda rr: (
-                        str(rr["lieferant"]) in clicked
-                        and str(rr["bereitstellung"]) in clicked
-                        and f"Polter {rr['polter_nr']}" in clicked
-                    ),
-                    axis=1
-                )
-            ]
+            clicked_id = None
+            click_signature = None
 
-            if len(clicked_match) == 1:
-                clicked_id = int(clicked_match.iloc[0]["id"])
-                if st.session_state.get("_map_selected_polter_id") != clicked_id:
+            # 1) Bevorzugt über die Koordinaten matchen.
+            if isinstance(clicked_obj, dict):
+                click_lat = clicked_obj.get("lat")
+                click_lng = clicked_obj.get("lng")
+
+                if click_lat is not None and click_lng is not None:
+                    click_signature = f"{float(click_lat):.7f}|{float(click_lng):.7f}"
+
+                    coord_match = pts[
+                        (pts["lat"].astype(float) - float(click_lat)).abs() < 0.000001
+                    ]
+                    coord_match = coord_match[
+                        (coord_match["lon"].astype(float) - float(click_lng)).abs() < 0.000001
+                    ]
+
+                    if len(coord_match) == 1:
+                        clicked_id = int(coord_match.iloc[0]["id"])
+
+            # 2) Fallback über Tooltip.
+            if clicked_id is None and clicked_tooltip:
+                clicked = str(clicked_tooltip)
+                click_signature = clicked
+
+                tooltip_match = view[
+                    view.apply(
+                        lambda rr: (
+                            str(rr["lieferant"]) in clicked
+                            and str(rr["bereitstellung"]) in clicked
+                            and f"Polter {rr['polter_nr']}" in clicked
+                        ),
+                        axis=1
+                    )
+                ]
+
+                if len(tooltip_match) == 1:
+                    clicked_id = int(tooltip_match.iloc[0]["id"])
+
+            # Nur auf einen NEUEN Klick reagieren, damit keine Rerun-Schleife entsteht.
+            if clicked_id is not None:
+                old_signature = st.session_state.get("_last_map_click_signature")
+                if click_signature != old_signature:
+                    st.session_state["_last_map_click_signature"] = click_signature
                     st.session_state["_map_selected_polter_id"] = clicked_id
                     st.rerun()
 
@@ -1100,30 +1131,33 @@ with right:
 
         option_labels = list(opts.keys())
 
-        # Falls der Benutzer vorher einen Kartenpunkt angeklickt hat,
-        # diesen Polter im Dropdown automatisch vorauswählen.
+        # Falls ein Kartenpunkt angeklickt wurde, die zugehörige Dropdown-Beschriftung
+        # direkt in den Selectbox-State schreiben.
         map_selected_id = st.session_state.get("_map_selected_polter_id")
-        default_index = 0
 
         if map_selected_id is not None:
-            for i, label in enumerate(option_labels):
-                if opts[label] == int(map_selected_id):
-                    default_index = i
-                    break
+            target_label = next(
+                (label for label in option_labels if opts[label] == int(map_selected_id)),
+                None
+            )
+            if target_label is not None:
+                st.session_state["edit_polter_selector"] = target_label
 
-            # Den bisherigen Selectbox-Zustand entfernen, damit die Auswahl
-            # sichtbar auf den angeklickten Karten-Polter springt.
-            st.session_state.pop("edit_polter_selector", None)
+        # Falls der gespeicherte Selectbox-Wert durch Filter nicht mehr vorhanden ist,
+        # sauber auf den ersten verfügbaren Polter zurückfallen.
+        if (
+            "edit_polter_selector" in st.session_state
+            and st.session_state["edit_polter_selector"] not in option_labels
+        ):
+            st.session_state["edit_polter_selector"] = option_labels[0]
 
         selected = st.selectbox(
             "Polter auswählen",
             option_labels,
-            index=default_index,
             key="edit_polter_selector"
         )
         pid = opts[selected]
 
-        # Nach erfolgreicher Übernahme reicht die normale Dropdown-Auswahl weiter.
         if map_selected_id is not None and pid == int(map_selected_id):
             st.session_state.pop("_map_selected_polter_id", None)
 
