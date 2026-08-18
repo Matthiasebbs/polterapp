@@ -943,24 +943,28 @@ counter_view["abfuhrstatus"] = counter_view.apply(berechne_abfuhrstatus, axis=1)
 offen_counter = counter_view[counter_view["abfuhrstatus"] != "Abgefahren"].copy()
 abgefahren_counter = counter_view[counter_view["abfuhrstatus"] == "Abgefahren"].copy()
 
-m1,m2,m3,m4,m5,m6 = st.columns(6)
-
+# Erste Zeile: noch nicht abgefahren
+st.markdown("### Noch nicht abgefahren")
+m1, m2, m3 = st.columns(3)
 m1.metric(
-    "Noch nicht abgefahren",
+    "Polter",
     len(offen_counter),
     help="Anzahl der offenen und teilweise abgefahrenen Polter."
 )
 m2.metric(
-    "RM offen",
+    "RM aktuell",
     f"{offen_counter['menge_rm_aktuell'].fillna(0).sum():,.1f}"
 )
 m3.metric(
-    "FM offen",
+    "FM / EFm aktuell",
     f"{offen_counter['kubatur_fm_aktuell'].fillna(0).sum():,.1f}"
 )
 
+# Zweite Zeile: abgefahren
+st.markdown("### Abgefahren")
+m4, m5, m6 = st.columns(3)
 m4.metric(
-    "Abgefahren",
+    "Polter",
     len(abgefahren_counter),
     help="Anzahl der vollständig abgefahrenen Polter."
 )
@@ -969,7 +973,7 @@ m5.metric(
     f"{(abgefahren_counter['menge_rm_original'].fillna(0) - abgefahren_counter['menge_rm_aktuell'].fillna(0)).sum():,.1f}"
 )
 m6.metric(
-    "FM abgefahren",
+    "FM / EFm abgefahren",
     f"{(abgefahren_counter['kubatur_fm_original'].fillna(0) - abgefahren_counter['kubatur_fm_aktuell'].fillna(0)).sum():,.1f}"
 )
 
