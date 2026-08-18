@@ -1018,15 +1018,26 @@ with right:
     edit_view = edit_view[edit_view["abfuhrstatus"] != "Abgefahren"].copy()
 
     if not edit_view.empty:
+        # Dropdown-Key jetzt IMMER eindeutig:
+        # Liste + Los + Polter müssen sichtbar sein.
         opts = {}
         for _, r in edit_view.iterrows():
-            key = r["holzliste"] or f"{r['hab']}/{r['los']}/{r['polter_nr']}"
-            opts[f"{r['lieferant']} · {r['fraechter'] or '-'} · {r['bereitstellung']} · {key}"] = int(r["id"])
+            liste = str(r["holzliste"] or "-")
+            los = str(r["los"] or "-")
+            polter = str(r["polter_nr"] or "-")
+            label = (
+                f"{r['lieferant']} · {r['fraechter'] or '-'} · "
+                f"{r['bereitstellung']} · Liste {liste} · Los {los} · Polter {polter}"
+            )
+            opts[label] = int(r["id"])
 
-        selected = st.selectbox("Polter auswählen", list(opts.keys()), key="edit_polter_selector")
+        selected = st.selectbox(
+            "Polter auswählen",
+            list(opts.keys()),
+            key="edit_polter_selector"
+        )
         pid = opts[selected]
 
-        # Immer frisch aus der aktuell geladenen Datenbasis holen.
         row_match = df[df["id"] == pid]
         if row_match.empty:
             st.warning("Dieser Polter ist momentan nicht mehr verfügbar. Bitte die Seite neu laden.")
@@ -1048,41 +1059,44 @@ with right:
             old_fm = safe_num(row["kubatur_fm_aktuell"])
             original_rm = safe_num(row["menge_rm_original"])
 
+            selected_pid_key = "_edit_selected_pid"
+            previous_pid = st.session_state.get(selected_pid_key)
+
+            # Bei Polter-Wechsel sämtliche alten Edit-Widgetwerte entfernen.
+            # So hängen keine 0-Werte vom zuvor geöffneten Polter fest.
+            if previous_pid != pid:
+                for key in list(st.session_state.keys()):
+                    if (
+                        str(key).startswith("edit_rm_")
+                        or str(key).startswith("edit_fm_")
+                        or str(key).startswith("edit_status_")
+                        or str(key).startswith("edit_note_")
+                        or str(key).startswith("edit_lat_")
+                        or str(key).startswith("edit_lon_")
+                    ):
+                        st.session_state.pop(key, None)
+                st.session_state[selected_pid_key] = pid
+
             rm_key = f"edit_rm_{pid}"
             fm_key = f"edit_fm_{pid}"
             status_key = f"edit_status_{pid}"
             note_key = f"edit_note_{pid}"
             lat_key = f"edit_lat_{pid}"
             lon_key = f"edit_lon_{pid}"
-            source_key = f"edit_source_{pid}"
-            dirty_key = f"edit_dirty_{pid}"
 
-            current_source = (
-                round(old_rm, 6),
-                round(old_fm, 6),
-                str(row["status"] or "Offen"),
-                str(row["geaendert_am"] or "")
-            )
-
-            # Falls die DB-Werte sich seit dem letzten Öffnen geändert haben
-            # UND keine ungespeicherte Eingabe aktiv ist, Widgets neu laden.
-            need_init = (
-                source_key not in st.session_state
-                or (
-                    st.session_state.get(source_key) != current_source
-                    and not st.session_state.get(dirty_key, False)
-                )
-            )
-
-            if need_init:
+            # Echte DB-Werte laden, nicht 0 als Default.
+            if rm_key not in st.session_state:
                 st.session_state[rm_key] = old_rm
+            if fm_key not in st.session_state:
                 st.session_state[fm_key] = old_fm
+            if status_key not in st.session_state:
                 st.session_state[status_key] = str(row["status"] or "Offen")
+            if note_key not in st.session_state:
                 st.session_state[note_key] = row["interne_notiz"] or ""
+            if lat_key not in st.session_state:
                 st.session_state[lat_key] = safe_num(row["lat"])
+            if lon_key not in st.session_state:
                 st.session_state[lon_key] = safe_num(row["lon"])
-                st.session_state[source_key] = current_source
-                st.session_state[dirty_key] = False
 
             def automatic_status(rm_value):
                 rm_value = safe_num(rm_value)
@@ -1100,14 +1114,12 @@ with right:
                 rm_value = safe_num(st.session_state.get(rm_key))
                 st.session_state[fm_key] = round(rm_value / UMR_FACTOR, 3)
                 st.session_state[status_key] = automatic_status(rm_value)
-                st.session_state[dirty_key] = True
 
             def fm_changed():
                 fm_value = safe_num(st.session_state.get(fm_key))
                 rm_value = round(fm_value * UMR_FACTOR, 3)
                 st.session_state[rm_key] = rm_value
                 st.session_state[status_key] = automatic_status(rm_value)
-                st.session_state[dirty_key] = True
 
             st.caption(
                 "Umrechnung: 1,5 RM = 1 FM. Wenn du RM oder FM änderst, wird der andere "
@@ -1177,14 +1189,9 @@ with right:
                     None if lon_save == 0 else lon_save
                 )
 
-                # Alle temporären Bearbeitungswerte dieses Polters löschen,
-                # damit beim nächsten Öffnen garantiert die echten DB-Werte
-                # geladen werden und nicht versehentlich 0 stehen bleibt.
-                for k in [
-                    rm_key, fm_key, status_key, note_key, lat_key, lon_key,
-                    source_key, dirty_key
-                ]:
+                for k in [rm_key, fm_key, status_key, note_key, lat_key, lon_key]:
                     st.session_state.pop(k, None)
+                st.session_state.pop(selected_pid_key, None)
 
                 st.success(
                     f"Gespeichert: {rm_save:.3f} RM = {fm_save:.3f} FM · "
@@ -1198,7 +1205,10 @@ with right:
             c.metric("Aktuell FM", f"{safe_num(row['kubatur_fm_aktuell']):,.3f}")
 
             if pd.notna(row["lat"]) and pd.notna(row["lon"]):
-                st.link_button("📍 Google Maps", f"https://www.google.com/maps?q={row['lat']},{row['lon']}")
+                st.link_button(
+                    "📍 Google Maps",
+                    f"https://www.google.com/maps?q={row['lat']},{row['lon']}"
+                )
             if row.get("map_link"):
                 st.link_button("🗺️ Original-Kartenlink", row["map_link"])
 
