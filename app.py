@@ -431,10 +431,23 @@ def parse_fbg_isar_lech(pages, filename):
     return rows
 
 def parse_toerring(pages, filename):
+    """
+    Parser für Unternehmensgruppe Toerring-Jettenbach / Fulcrum Holzverwaltung.
+
+    Bereitstellungsname:
+      <Menge Los [EFm]>, <Losnummer>
+    Beispiel:
+      64.4, Kaindl_Ndh_26_01
+
+    Jeder Polter wird separat angelegt. GPS-Koordinaten sind in diesem
+    PDF-Typ nicht als numerische Werte vorhanden und bleiben deshalb leer.
+    """
     text = "\n".join(pages)
     if "Unternehmensgruppe Toerring-Jettenbach" not in text or "Poltererfassung" not in text:
         return []
+
     los = re.search(r"Losnummer\s+([^\n]+)", text)
+    los_efm = re.search(r"Menge Los \[EFm\]\s+([\d.,]+)", text)
     datum = re.search(r"Datum Aufnahme\s+([^\n]+)", text)
     revier = re.search(r"Revier\s+([^\n]+)", text)
     distrikt = re.search(r"Distrikt\s+([^\n]+)", text)
@@ -442,31 +455,59 @@ def parse_toerring(pages, filename):
     sort = re.search(r"Sortiment\s+([^\n]+)", text)
     length = re.search(r"Länge\s+([\d.,]+)\s*m", text)
     zert = re.search(r"PEFC Zertifikat Eigentümer ITJ-BY:\s*([^\n]+)", text)
+
     losnr = los.group(1).strip() if los else Path(filename).stem
+    menge_los_efm = los_efm.group(1).strip().replace(",", ".") if los_efm else ""
+
+    # Gewünschter Bereitstellungsname, z. B. "64.4, Kaindl_Ndh_26_01"
+    bereitstellungsname = (
+        f"{menge_los_efm}, {losnr}"
+        if menge_los_efm
+        else losnr
+    )
 
     matches = list(re.finditer(r"Polternummer\s+(\d+)", text))
     rows = []
-    for i,m in enumerate(matches):
-        seg = text[m.start():(matches[i+1].start() if i+1<len(matches) else len(text))]
+
+    for i, m in enumerate(matches):
+        seg = text[m.start():(matches[i+1].start() if i+1 < len(matches) else len(text))]
         efm = re.search(r"Menge \[EFm\]\s+([\d.,]+)", seg)
         rm = re.search(r"Menge \[Rm\]\s+([\d.,]+)", seg)
+
         r = empty(filename)
         r.update(
-            bereitstellung=losnr, lieferant="Unternehmensgruppe Toerring-Jettenbach",
-            datum=datum.group(1).strip() if datum else "", holzliste=losnr,
-            polter_nr=m.group(1), holzart=baum.group(1).strip() if baum else "",
+            bereitstellung=bereitstellungsname,
+            lieferant="Unternehmensgruppe Toerring-Jettenbach",
+            datum=datum.group(1).strip() if datum else "",
+            holzliste=losnr,
+            los="",
+            polter_nr=m.group(1),
+            holzart=baum.group(1).strip() if baum else "",
             sortiment=sort.group(1).strip() if sort else "",
             laenge_m=n(length.group(1)) if length else None,
-            einheit="Rm / EFm",
+            einheit="RM / FM",
+            lat=None,
+            lon=None,
             waldort=" / ".join(
-                x.group(1).strip() for x in (revier,distrikt) if x
+                x.group(1).strip() for x in (revier, distrikt) if x
             ),
             lagerort="Frei Waldstraße",
-            bemerkung="Im PDF sind die Positionen nur als Kartenmarker/Bild vorhanden; keine numerischen GPS-Koordinaten sind im Text hinterlegt.",
+            bemerkung=(
+                "Keine numerischen GPS-Koordinaten im PDF. "
+                "Koordinaten können in 'Polter bearbeiten' manuell auf der Karte gesetzt werden."
+            ),
             zertifikat=zert.group(1).strip() if zert else ""
         )
-        qty(r, n(rm.group(1)) if rm else None, n(efm.group(1)) if efm else None)
+
+        # Wie in der restlichen App: RM ist Basis, falls vorhanden.
+        # Der andere Wert wird mit 1,5 RM = 1 FM berechnet.
+        qty(
+            r,
+            n(rm.group(1)) if rm else None,
+            n(efm.group(1)) if efm else None
+        )
         rows.append(r)
+
     return rows
 
 def parse_bayernatlas(pages, filename):
@@ -982,12 +1023,10 @@ left,right = st.columns([1.45,1])
 with left:
     st.subheader("2. Karte")
 
-    # Erledigte Polter werden bewusst NICHT mehr auf der Karte angezeigt.
     map_view = view[~view["status"].isin(["Abgefahren", "Erledigt"])].copy()
-    pts = map_view.dropna(subset=["lat","lon"])
+    pts = map_view.dropna(subset=["lat", "lon"]).copy()
     missing = len(map_view) - len(pts)
 
-    # Kleine Farblegende für die aktuell ausgewählten Lieferanten.
     visible_suppliers = sorted([x for x in map_view["lieferant"].dropna().unique() if x])
     if visible_suppliers:
         legend_html = " &nbsp; ".join(
@@ -999,70 +1038,143 @@ with left:
         )
         st.markdown(legend_html, unsafe_allow_html=True)
 
-    erledigt_count = int(view["status"].isin(["Abgefahren", "Erledigt"]).sum())
-    if erledigt_count:
-        st.caption(f"{erledigt_count} abgefahrene Polter sind ausgeblendet.")
+    abgefahren_count = int(view["status"].isin(["Abgefahren", "Erledigt"]).sum())
+    if abgefahren_count:
+        st.caption(f"{abgefahren_count} abgefahrene Polter sind ausgeblendet.")
     if missing:
-        st.caption(f"{missing} offene/eingeplante Polter haben keine numerischen GPS-Koordinaten und erscheinen deshalb nur in der Liste.")
+        st.caption(
+            f"{missing} aktive Polter haben noch keine numerischen GPS-Koordinaten. "
+            "Diese können unter „Polter bearbeiten“ manuell gesetzt werden."
+        )
 
-    if pts.empty:
-        st.info("Für die aktuelle Auswahl sind keine aktiven Polter mit numerischen GPS-Koordinaten vorhanden.")
+    # Manueller Koordinatenmodus wird rechts bei "Polter bearbeiten" aktiviert.
+    manual_pid = st.session_state.get("_coord_edit_polter_id")
+    manual_key = f"coord_manual_enabled_{manual_pid}" if manual_pid is not None else None
+    manual_enabled = bool(manual_key and st.session_state.get(manual_key, False))
+
+    if manual_enabled:
+        st.warning(
+            "📍 Koordinatenmodus aktiv: Klicke auf der Karte auf den Standort des ausgewählten Polters. "
+            "Der Punkt wird zunächst nur vorgemerkt und erst mit „Speichern“ übernommen."
+        )
+
+    # Karte IMMER anzeigen – auch wenn die aktuelle Auswahl noch keine GPS-Punkte hat.
+    if not pts.empty:
+        center = [float(pts["lat"].mean()), float(pts["lon"].mean())]
+        zoom = 9
     else:
-        mp = folium.Map(
-            location=[pts["lat"].mean(), pts["lon"].mean()],
-            zoom_start=9,
-            tiles="OpenStreetMap"
-        )
+        # Falls im aktuellen Filter keine Koordinaten vorhanden sind, vorhandene
+        # Polter aus der gesamten Datenbank als Orientierung verwenden.
+        all_pts = df.dropna(subset=["lat", "lon"])
+        if not all_pts.empty:
+            center = [float(all_pts["lat"].mean()), float(all_pts["lon"].mean())]
+            zoom = 8
+        else:
+            # Süddeutschland/Österreich als neutraler Startpunkt.
+            center = [48.2, 11.5]
+            zoom = 7
 
-        for _, r in pts.iterrows():
-            label = r["holzliste"] or f"{r['hab']}/{r['los']}/{r['polter_nr']}"
-            supplier_color = supplier_color_map.get(r["lieferant"], "#666666")
-            pop = f"""
-            <b>{r['lieferant']}</b><br>
-            Frächter: {r['fraechter'] or '-'}<br>
-            Bereitstellung: {r['bereitstellung']}<br>
-            Polter: {label}<br>
-            Lagerort: {r['lagerort'] or '-'}<br>
-            Holzart: {r['holzart'] or '-'} {r['sortiment'] or ''}<br>
-            RM aktuell: {r['menge_rm_aktuell'] if pd.notna(r['menge_rm_aktuell']) else '-'}<br>
-            FM/EFm aktuell: {r['kubatur_fm_aktuell'] if pd.notna(r['kubatur_fm_aktuell']) else '-'}<br>
-            Status: {r['status']}
-            """
+    mp = folium.Map(
+        location=center,
+        zoom_start=zoom,
+        tiles="OpenStreetMap"
+    )
 
-            # CircleMarker erlaubt für jeden Lieferanten eine frei definierte Farbe.
-            folium.CircleMarker(
-                location=[float(r["lat"]), float(r["lon"])],
-                radius=8,
-                color=supplier_color,
-                fill=True,
-                fill_color=supplier_color,
-                fill_opacity=0.95,
-                weight=2,
-                tooltip=f"{r['lieferant']} · {r['bereitstellung']} · Polter {r['polter_nr']}",
-                popup=folium.Popup(pop, max_width=380),
-            ).add_to(mp)
+    for _, r in pts.iterrows():
+        liste = str(r["holzliste"] or "-")
+        los = str(r["los"] or "-")
+        polter = str(r["polter_nr"] or "-")
+        supplier_color = supplier_color_map.get(r["lieferant"], "#666666")
 
-        map_state = st_folium(
-            mp,
-            use_container_width=True,
-            height=610,
-            returned_objects=[
-                "last_object_clicked",
-                "last_object_clicked_tooltip"
-            ]
-        )
+        pop = f"""
+        <b>{r['lieferant']}</b><br>
+        Frächter: {r['fraechter'] or '-'}<br>
+        Bereitstellung: {r['bereitstellung']}<br>
+        Liste: {liste}<br>
+        Los: {los}<br>
+        Polter: {polter}<br>
+        Lagerort: {r['lagerort'] or '-'}<br>
+        Holzart: {r['holzart'] or '-'} {r['sortiment'] or ''}<br>
+        RM aktuell: {r['menge_rm_aktuell'] if pd.notna(r['menge_rm_aktuell']) else '-'}<br>
+        FM aktuell: {r['kubatur_fm_aktuell'] if pd.notna(r['kubatur_fm_aktuell']) else '-'}<br>
+        Status: {r['status']}
+        """
 
-        # Robuste Karten-Auswahl:
-        # CircleMarker-Klicks liefern zuverlässig die angeklickten Koordinaten.
-        # Darüber wird der passende Polter gesucht.
-        if isinstance(map_state, dict):
+        folium.CircleMarker(
+            location=[float(r["lat"]), float(r["lon"])],
+            radius=8,
+            color=supplier_color,
+            fill=True,
+            fill_color=supplier_color,
+            fill_opacity=0.95,
+            weight=2,
+            tooltip=(
+                f"{r['lieferant']} · {r['bereitstellung']} · "
+                f"Liste {liste} · Los {los} · Polter {polter}"
+            ),
+            popup=folium.Popup(pop, max_width=380),
+        ).add_to(mp)
+
+    # Einen vorgemerkten manuellen Punkt zusätzlich sichtbar machen.
+    pending_pid = st.session_state.get("_manual_coord_pending_pid")
+    pending_lat = st.session_state.get("_manual_coord_pending_lat")
+    pending_lon = st.session_state.get("_manual_coord_pending_lon")
+    if (
+        manual_enabled
+        and pending_pid == manual_pid
+        and pending_lat is not None
+        and pending_lon is not None
+    ):
+        folium.Marker(
+            [float(pending_lat), float(pending_lon)],
+            tooltip="Neuer Standort – noch nicht gespeichert",
+            icon=folium.Icon(icon="map-marker")
+        ).add_to(mp)
+
+    map_state = st_folium(
+        mp,
+        use_container_width=True,
+        height=610,
+        returned_objects=[
+            "last_clicked",
+            "last_object_clicked",
+            "last_object_clicked_tooltip"
+        ]
+    )
+
+    if isinstance(map_state, dict):
+        # --------------------------------------------------------
+        # A) Manueller Koordinatenmodus:
+        # beliebiger Kartenklick = neuer Standort für aktiven Polter
+        # --------------------------------------------------------
+        if manual_enabled and manual_pid is not None:
+            click = map_state.get("last_clicked")
+            if isinstance(click, dict):
+                click_lat = click.get("lat")
+                click_lng = click.get("lng")
+
+                if click_lat is not None and click_lng is not None:
+                    signature = (
+                        f"{manual_pid}|{float(click_lat):.7f}|{float(click_lng):.7f}"
+                    )
+                    if signature != st.session_state.get("_last_manual_coord_click"):
+                        st.session_state["_last_manual_coord_click"] = signature
+                        st.session_state["_manual_coord_pending_pid"] = int(manual_pid)
+                        st.session_state["_manual_coord_pending_lat"] = float(click_lat)
+                        st.session_state["_manual_coord_pending_lon"] = float(click_lng)
+                        st.rerun()
+
+        # --------------------------------------------------------
+        # B) Normalmodus:
+        # vorhandenen Marker anklicken -> Polter bearbeiten auswählen
+        # --------------------------------------------------------
+        else:
             clicked_obj = map_state.get("last_object_clicked")
             clicked_tooltip = map_state.get("last_object_clicked_tooltip")
 
             clicked_id = None
             click_signature = None
 
-            # 1) Bevorzugt über die Koordinaten matchen.
             if isinstance(clicked_obj, dict):
                 click_lat = clicked_obj.get("lat")
                 click_lng = clicked_obj.get("lng")
@@ -1080,7 +1192,6 @@ with left:
                     if len(coord_match) == 1:
                         clicked_id = int(coord_match.iloc[0]["id"])
 
-            # 2) Fallback über Tooltip.
             if clicked_id is None and clicked_tooltip:
                 clicked = str(clicked_tooltip)
                 click_signature = clicked
@@ -1099,7 +1210,6 @@ with left:
                 if len(tooltip_match) == 1:
                     clicked_id = int(tooltip_match.iloc[0]["id"])
 
-            # Nur auf einen NEUEN Klick reagieren, damit keine Rerun-Schleife entsteht.
             if clicked_id is not None:
                 old_signature = st.session_state.get("_last_map_click_signature")
                 if click_signature != old_signature:
@@ -1157,6 +1267,9 @@ with right:
             key="edit_polter_selector"
         )
         pid = opts[selected]
+
+        # Aktuellen Bearbeitungs-Polter für den manuellen Kartenmodus merken.
+        st.session_state["_coord_edit_polter_id"] = int(pid)
 
         if map_selected_id is not None and pid == int(map_selected_id):
             st.session_state.pop("_map_selected_polter_id", None)
@@ -1275,7 +1388,38 @@ with right:
 
             st.text_area("Interne Notiz", key=note_key)
 
-            st.caption("Nur bei PDFs ohne numerische GPS-Koordinaten nötig:")
+            manual_coord_key = f"coord_manual_enabled_{pid}"
+            manual_coord_enabled = st.checkbox(
+                "Koordinaten manuell bearbeiten",
+                key=manual_coord_key,
+                help=(
+                    "Aktivieren und anschließend links auf der Karte auf den Standort klicken. "
+                    "Die Koordinaten werden erst mit „Speichern“ dauerhaft übernommen."
+                )
+            )
+
+            # Falls links auf der Karte ein Punkt für genau diesen Polter gewählt wurde,
+            # die Werte als noch nicht gespeicherte Vorschau in die Eingabefelder übernehmen.
+            if (
+                manual_coord_enabled
+                and st.session_state.get("_manual_coord_pending_pid") == int(pid)
+                and st.session_state.get("_manual_coord_pending_lat") is not None
+                and st.session_state.get("_manual_coord_pending_lon") is not None
+            ):
+                pending_lat = float(st.session_state["_manual_coord_pending_lat"])
+                pending_lon = float(st.session_state["_manual_coord_pending_lon"])
+
+                # Vor den Widgets setzen, damit die neuen Werte sofort sichtbar sind.
+                st.session_state[lat_key] = pending_lat
+                st.session_state[lon_key] = pending_lon
+
+                st.success(
+                    f"📍 Neuer Kartenpunkt vorgemerkt: "
+                    f"{pending_lat:.6f}, {pending_lon:.6f}. "
+                    "Zum Übernehmen bitte auf „Speichern“ klicken."
+                )
+
+            st.caption("GPS-Koordinaten:")
             st.number_input("Breitengrad", format="%.7f", key=lat_key)
             st.number_input("Längengrad", format="%.7f", key=lon_key)
 
@@ -1315,6 +1459,13 @@ with right:
                 for k in [rm_key, fm_key, status_key, note_key, lat_key, lon_key]:
                     st.session_state.pop(k, None)
                 st.session_state.pop(selected_pid_key, None)
+
+                # Manuellen Koordinatenmodus nach erfolgreichem Speichern zurücksetzen.
+                st.session_state.pop(f"coord_manual_enabled_{pid}", None)
+                st.session_state.pop("_manual_coord_pending_pid", None)
+                st.session_state.pop("_manual_coord_pending_lat", None)
+                st.session_state.pop("_manual_coord_pending_lon", None)
+                st.session_state.pop("_last_manual_coord_click", None)
 
                 st.success(
                     f"Gespeichert: {rm_save:.3f} RM = {fm_save:.3f} FM · "
