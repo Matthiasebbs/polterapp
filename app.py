@@ -239,17 +239,13 @@ def parse_fbg_isar_lech(pages, filename):
     """
     Robuster Parser für FBG Isar-Lech / Bereitstellung BA-...
 
-    Unterstützt jetzt auch:
-    - Polternummern mit Punkt, z. B. 1.062 / 1.063
-    - RM- und FM-Positionen innerhalb derselben Bereitstellung
-    - zusammengeklebte PDF-Texte wie "407Wei-BR-oa-3.0"
-    - GPS-Werte, die in den Folgezeilen unter der Polterzeile stehen
-    - mehrere Sortimentszeilen für denselben Polter (werden zu EINEM Polter summiert)
-
-    Mengenregel der App:
-    1,5 RM = 1 FM.
-    Aus dem PDF wird je Positionszeile nur die dort angegebene Einheit als Basis
-    genommen; der andere Wert wird daraus berechnet.
+    Wichtig:
+    - Jeder Polter bleibt separat.
+    - Zusammengefasst wird NUR, wenn Liste + Los + Polternummer identisch sind.
+    - GPS-Koordinaten können in diesen PDFs VOR der jeweiligen Polterzeile stehen.
+    - Polternummern mit Punkt (z. B. 1.062) werden unterstützt.
+    - RM- und FM-Zeilen werden unterstützt.
+    - Faktor der App: 1,5 RM = 1 FM.
     """
     first = pages[0] if pages else ""
     if "Bereitstellung BA-" not in first or "GPS-N GPS-O" not in first:
@@ -266,10 +262,10 @@ def parse_fbg_isar_lech(pages, filename):
 
     lines = [re.sub(r"\s+", " ", x.strip()) for x in first.splitlines() if x.strip()]
 
-    # Erlaubt sowohl sauber getrennte als auch "zusammengeklebte" Varianten.
-    # Beispiel:
-    # 261504 861 407 Wei-BR-oa-3.0 0 1,360 Rm m.R. 0,816 48,221921
-    # 261504 861 407Wei-BR-oa-3.0 0 1,360 Rm m.R. 0,816 48,221921
+    # Beispielzeilen:
+    # 260751 861 1.062 Er-IL-K-4.0 18,700 Rm m.R. 9,350
+    # 260403 521 308 Bu-L-B-3.4-41.0 1 0,427 Fm o.R. 0,427
+    # 261504 861 407 Wei-BR-oa-3.0 0 1,360 Rm m.R. 0,816
     row_re = re.compile(
         r"^(?P<liste>\d+)\s+"
         r"(?P<los>\d+)\s+"
@@ -285,44 +281,53 @@ def parse_fbg_isar_lech(pages, filename):
         re.I
     )
 
+    # In den aktuellen FBG-PDFs stehen GPS-N und GPS-O häufig in EINER
+    # eigenen Zeile direkt VOR dem dazugehörigen Polter.
+    gps_pair_re = re.compile(
+        r"^(?P<lat>\d{1,2},\d{5,8})\s+(?P<lon>\d{1,3},\d{5,8})$"
+    )
+
     raw_rows = []
-    i = 0
-    while i < len(lines):
-        s = lines[i]
+    pending_gps = None
+
+    for idx, s in enumerate(lines):
+        gps_pair = gps_pair_re.match(s)
+        if gps_pair:
+            pending_gps = (n(gps_pair.group("lat")), n(gps_pair.group("lon")))
+            continue
+
         m = row_re.match(s)
         if not m:
-            i += 1
             continue
 
         d = m.groupdict()
+
+        # 1. Inline-GPS bevorzugen.
         lat = n(d.get("lat"))
         lon = n(d.get("lon"))
 
-        # GPS kann in den folgenden Zeilen stehen:
-        # 48,519901
-        # (48° ...)
-        # 11,178170
-        # (11° ...)
-        j = i + 1
-        numeric_follow = []
-        while j < len(lines) and j <= i + 5:
-            nxt = lines[j]
-            if row_re.match(nxt):
-                break
-            if re.fullmatch(r"\d{1,3},\d{5,8}", nxt):
-                numeric_follow.append(n(nxt))
-            elif nxt.startswith("∑") or nxt.startswith("Revier:") or nxt.startswith("Bemerkung:"):
-                break
-            j += 1
+        # 2. Sonst die unmittelbar vorher gelesene GPS-Zeile verwenden.
+        if (lat is None or lon is None) and pending_gps is not None:
+            lat = pending_gps[0] if lat is None else lat
+            lon = pending_gps[1] if lon is None else lon
 
-        if lat is None and numeric_follow:
-            lat = numeric_follow[0]
-        if lon is None and len(numeric_follow) >= 2:
-            lon = numeric_follow[1]
+        # 3. Fallback: Falls ein anderes FBG-Exportformat GPS erst NACH
+        #    der Polterzeile schreibt, die nächsten wenigen Zeilen prüfen.
+        if lat is None or lon is None:
+            for nxt in lines[idx + 1: idx + 5]:
+                gp = gps_pair_re.match(nxt)
+                if gp:
+                    lat = n(gp.group("lat")) if lat is None else lat
+                    lon = n(gp.group("lon")) if lon is None else lon
+                    break
+
+        # GPS gehört nur zu dieser einen Polterzeile.
+        pending_gps = None
 
         amount = n(d["menge"])
         unit = d["unit"].lower()
-        # Nur die im PDF angegebene Einheit ist Basis.
+
+        # Pro Positionszeile NUR die angegebene Einheit als Basis nehmen.
         if unit == "rm":
             rm_val = amount
             fm_val = round(float(amount) / 1.5, 3) if amount is not None else None
@@ -332,8 +337,10 @@ def parse_fbg_isar_lech(pages, filename):
 
         sortiment = d["sort"]
         parts = sortiment.split("-")
+
+        # Sortimentlänge bestimmen. Bei z. B. Bu-L-B-3.4-41.0 ist 3.4 m
+        # die Länge; 41.0 ist kein Längenwert.
         laenge = None
-        # Länge ist meist die letzte sinnvolle Dezimalzahl im Sortiment.
         for token in reversed(parts):
             try:
                 val = float(token)
@@ -350,34 +357,42 @@ def parse_fbg_isar_lech(pages, filename):
             "sortiment": sortiment,
             "holzart": parts[0] if parts else "",
             "laenge": laenge,
-            "stueck": n(d["stck"]),
+            "stueck": n(d.get("stck")),
             "rm": rm_val,
             "fm": fm_val,
             "lat": lat,
             "lon": lon,
         })
-        i += 1
 
-    # Mehrere Positionszeilen desselben Polters zusammenfassen.
+    # NUR exakt gleiche Kombinationen zusammenfassen:
+    # Liste + Los + Polter müssen ALLE identisch sein.
     grouped = {}
     for rr in raw_rows:
-        key = (rr["liste"], rr["los"], rr["polter"])
+        key = (str(rr["liste"]), str(rr["los"]), str(rr["polter"]))
+
         if key not in grouped:
-            grouped[key] = dict(rr)
-            grouped[key]["sortimente"] = [rr["sortiment"]]
-        else:
-            g = grouped[key]
-            g["rm"] = round(float(g.get("rm") or 0) + float(rr.get("rm") or 0), 3)
-            g["fm"] = round(float(g.get("fm") or 0) + float(rr.get("fm") or 0), 3)
-            g["stueck"] = float(g.get("stueck") or 0) + float(rr.get("stueck") or 0)
-            if rr["sortiment"] not in g["sortimente"]:
-                g["sortimente"].append(rr["sortiment"])
-            if g.get("lat") is None:
-                g["lat"] = rr.get("lat")
-            if g.get("lon") is None:
-                g["lon"] = rr.get("lon")
-            if g.get("laenge") is None:
-                g["laenge"] = rr.get("laenge")
+            grouped[key] = {
+                **rr,
+                "sortimente": [rr["sortiment"]],
+            }
+            continue
+
+        g = grouped[key]
+        g["rm"] = round(float(g.get("rm") or 0) + float(rr.get("rm") or 0), 3)
+        g["fm"] = round(float(g.get("fm") or 0) + float(rr.get("fm") or 0), 3)
+        g["stueck"] = float(g.get("stueck") or 0) + float(rr.get("stueck") or 0)
+
+        if rr["sortiment"] not in g["sortimente"]:
+            g["sortimente"].append(rr["sortiment"])
+
+        # Für einen identischen Polter reicht ein GPS-Punkt; den ersten
+        # vorhandenen beibehalten.
+        if g.get("lat") is None and rr.get("lat") is not None:
+            g["lat"] = rr["lat"]
+        if g.get("lon") is None and rr.get("lon") is not None:
+            g["lon"] = rr["lon"]
+        if g.get("laenge") is None and rr.get("laenge") is not None:
+            g["laenge"] = rr["laenge"]
 
     rows = []
     for (liste, los, pnr), g in grouped.items():
@@ -407,7 +422,6 @@ def parse_fbg_isar_lech(pages, filename):
             ansprechpartner=ap.group(1).strip() if ap else ""
         )
 
-        # grouped enthält bereits beide Werte gemäß Faktor 1,5.
         r["menge_rm_original"] = g.get("rm")
         r["menge_rm_aktuell"] = g.get("rm")
         r["kubatur_fm_original"] = g.get("fm")
@@ -1005,25 +1019,34 @@ with right:
 
     if not edit_view.empty:
         opts = {}
-        for _,r in edit_view.iterrows():
+        for _, r in edit_view.iterrows():
             key = r["holzliste"] or f"{r['hab']}/{r['los']}/{r['polter_nr']}"
             opts[f"{r['lieferant']} · {r['fraechter'] or '-'} · {r['bereitstellung']} · {key}"] = int(r["id"])
-        selected = st.selectbox("Polter auswählen", list(opts.keys()))
+
+        selected = st.selectbox("Polter auswählen", list(opts.keys()), key="edit_polter_selector")
         pid = opts[selected]
-        row = df[df["id"]==pid].iloc[0]
-        @st.fragment
-        def edit_polter_form(pid, row):
-            """
-            Änderungen werden sofort innerhalb des Bearbeitungsbereichs vorgerechnet,
-            aber erst mit dem Button "Speichern" dauerhaft übernommen.
-            Enter bestätigt nur die Eingabe im Feld und speichert NICHT.
-            """
+
+        # Immer frisch aus der aktuell geladenen Datenbasis holen.
+        row_match = df[df["id"] == pid]
+        if row_match.empty:
+            st.warning("Dieser Polter ist momentan nicht mehr verfügbar. Bitte die Seite neu laden.")
+        else:
+            row = row_match.iloc[0]
+
+            def safe_num(value, default=0.0):
+                try:
+                    if pd.isna(value):
+                        return float(default)
+                    return float(value)
+                except Exception:
+                    return float(default)
+
             UMR_FACTOR = 1.5
             EPS = 0.0005
 
-            old_rm = float(row["menge_rm_aktuell"] or 0)
-            old_fm = float(row["kubatur_fm_aktuell"] or 0)
-            original_rm = float(row["menge_rm_original"] or 0)
+            old_rm = safe_num(row["menge_rm_aktuell"])
+            old_fm = safe_num(row["kubatur_fm_aktuell"])
+            original_rm = safe_num(row["menge_rm_original"])
 
             rm_key = f"edit_rm_{pid}"
             fm_key = f"edit_fm_{pid}"
@@ -1031,20 +1054,38 @@ with right:
             note_key = f"edit_note_{pid}"
             lat_key = f"edit_lat_{pid}"
             lon_key = f"edit_lon_{pid}"
-            init_key = f"edit_initialized_{pid}"
+            source_key = f"edit_source_{pid}"
+            dirty_key = f"edit_dirty_{pid}"
 
-            # Beim ersten Öffnen dieses Polters die gespeicherten Werte laden.
-            if not st.session_state.get(init_key, False):
+            current_source = (
+                round(old_rm, 6),
+                round(old_fm, 6),
+                str(row["status"] or "Offen"),
+                str(row["geaendert_am"] or "")
+            )
+
+            # Falls die DB-Werte sich seit dem letzten Öffnen geändert haben
+            # UND keine ungespeicherte Eingabe aktiv ist, Widgets neu laden.
+            need_init = (
+                source_key not in st.session_state
+                or (
+                    st.session_state.get(source_key) != current_source
+                    and not st.session_state.get(dirty_key, False)
+                )
+            )
+
+            if need_init:
                 st.session_state[rm_key] = old_rm
                 st.session_state[fm_key] = old_fm
                 st.session_state[status_key] = str(row["status"] or "Offen")
                 st.session_state[note_key] = row["interne_notiz"] or ""
-                st.session_state[lat_key] = float(row["lat"]) if pd.notna(row["lat"]) else 0.0
-                st.session_state[lon_key] = float(row["lon"]) if pd.notna(row["lon"]) else 0.0
-                st.session_state[init_key] = True
+                st.session_state[lat_key] = safe_num(row["lat"])
+                st.session_state[lon_key] = safe_num(row["lon"])
+                st.session_state[source_key] = current_source
+                st.session_state[dirty_key] = False
 
             def automatic_status(rm_value):
-                rm_value = float(rm_value)
+                rm_value = safe_num(rm_value)
                 if rm_value <= EPS:
                     return "Abgefahren"
                 if original_rm > 0 and rm_value < original_rm - EPS:
@@ -1056,22 +1097,21 @@ with right:
                 return current_saved
 
             def rm_changed():
-                """RM ist führend -> FM und Status sofort nur in der Vorschau anpassen."""
-                rm_value = float(st.session_state.get(rm_key, 0.0))
+                rm_value = safe_num(st.session_state.get(rm_key))
                 st.session_state[fm_key] = round(rm_value / UMR_FACTOR, 3)
                 st.session_state[status_key] = automatic_status(rm_value)
+                st.session_state[dirty_key] = True
 
             def fm_changed():
-                """FM ist führend -> RM und Status sofort nur in der Vorschau anpassen."""
-                fm_value = float(st.session_state.get(fm_key, 0.0))
+                fm_value = safe_num(st.session_state.get(fm_key))
                 rm_value = round(fm_value * UMR_FACTOR, 3)
                 st.session_state[rm_key] = rm_value
                 st.session_state[status_key] = automatic_status(rm_value)
+                st.session_state[dirty_key] = True
 
             st.caption(
-                "Umrechnung: 1,5 RM = 1 FM. Sobald du RM oder FM änderst und die Eingabe "
-                "z. B. mit Enter bestätigst, wird der jeweils andere Wert sofort mitgerechnet. "
-                "Gespeichert wird aber ausschließlich mit dem Button „Speichern“."
+                "Umrechnung: 1,5 RM = 1 FM. Wenn du RM oder FM änderst, wird der andere "
+                "Wert sofort vorgerechnet. Dauerhaft übernommen wird erst mit „Speichern“."
             )
 
             st.number_input(
@@ -1092,7 +1132,6 @@ with right:
                 on_change=fm_changed
             )
 
-            # Der Status wird bei Mengenänderungen automatisch vorgerechnet.
             st.text_input(
                 "Status (automatisch)",
                 key=status_key,
@@ -1102,19 +1141,11 @@ with right:
             st.text_area("Interne Notiz", key=note_key)
 
             st.caption("Nur bei PDFs ohne numerische GPS-Koordinaten nötig:")
-            st.number_input(
-                "Breitengrad",
-                format="%.7f",
-                key=lat_key
-            )
-            st.number_input(
-                "Längengrad",
-                format="%.7f",
-                key=lon_key
-            )
+            st.number_input("Breitengrad", format="%.7f", key=lat_key)
+            st.number_input("Längengrad", format="%.7f", key=lon_key)
 
-            rm_preview = float(st.session_state.get(rm_key, 0.0))
-            fm_preview = float(st.session_state.get(fm_key, 0.0))
+            rm_preview = safe_num(st.session_state.get(rm_key))
+            fm_preview = safe_num(st.session_state.get(fm_key))
             status_preview = str(st.session_state.get(status_key, "Offen"))
 
             if status_preview == "Abgefahren":
@@ -1128,14 +1159,13 @@ with right:
                     "Status wird beim Speichern auf „Teilweise abgefahren“ gesetzt."
                 )
 
-            # KEIN Formular: Dadurch löst Enter keinen Speichervorgang aus.
             if st.button("Speichern", type="primary", key=f"save_polter_{pid}"):
-                rm_save = float(st.session_state.get(rm_key, 0.0))
-                fm_save = float(st.session_state.get(fm_key, 0.0))
+                rm_save = safe_num(st.session_state.get(rm_key))
+                fm_save = safe_num(st.session_state.get(fm_key))
                 status_save = automatic_status(rm_save)
                 note_save = st.session_state.get(note_key, "")
-                lat_save = float(st.session_state.get(lat_key, 0.0))
-                lon_save = float(st.session_state.get(lon_key, 0.0))
+                lat_save = safe_num(st.session_state.get(lat_key))
+                lon_save = safe_num(st.session_state.get(lon_key))
 
                 update_polter(
                     pid,
@@ -1147,35 +1177,36 @@ with right:
                     None if lon_save == 0 else lon_save
                 )
 
-                # Bearbeitungszustand dieses Polters zurücksetzen.
-                st.session_state.pop(init_key, None)
+                # Alle temporären Bearbeitungswerte dieses Polters löschen,
+                # damit beim nächsten Öffnen garantiert die echten DB-Werte
+                # geladen werden und nicht versehentlich 0 stehen bleibt.
+                for k in [
+                    rm_key, fm_key, status_key, note_key, lat_key, lon_key,
+                    source_key, dirty_key
+                ]:
+                    st.session_state.pop(k, None)
 
                 st.success(
                     f"Gespeichert: {rm_save:.3f} RM = {fm_save:.3f} FM · "
                     f"Status: {status_save}"
                 )
-                # Erst JETZT die gesamte App aktualisieren. Dadurch verschwindet
-                # ein auf 0 gesetzter Polter aus "Polter bearbeiten".
-                st.rerun(scope="app")
+                st.rerun()
 
-        edit_polter_form(pid, row)
+            a, b, c = st.columns(3)
+            a.metric("Original RM", f"{safe_num(row['menge_rm_original']):,.3f}")
+            b.metric("Aktuell RM", f"{safe_num(row['menge_rm_aktuell']):,.3f}")
+            c.metric("Aktuell FM", f"{safe_num(row['kubatur_fm_aktuell']):,.3f}")
 
+            if pd.notna(row["lat"]) and pd.notna(row["lon"]):
+                st.link_button("📍 Google Maps", f"https://www.google.com/maps?q={row['lat']},{row['lon']}")
+            if row.get("map_link"):
+                st.link_button("🗺️ Original-Kartenlink", row["map_link"])
 
-        a,b,c = st.columns(3)
-        a.metric("Original RM", f"{float(row['menge_rm_original'] or 0):,.3f}")
-        b.metric("Aktuell RM", f"{float(row['menge_rm_aktuell'] or 0):,.3f}")
-        c.metric("Aktuell FM", f"{float(row['kubatur_fm_aktuell'] or 0):,.3f}")
-
-        if pd.notna(row["lat"]) and pd.notna(row["lon"]):
-            st.link_button("📍 Google Maps", f"https://www.google.com/maps?q={row['lat']},{row['lon']}")
-        if row.get("map_link"):
-            st.link_button("🗺️ Original-Kartenlink", row["map_link"])
-
-        with st.expander("Einzelnen Polter löschen"):
-            if st.checkbox("Löschen bestätigen", key=f"conf_{pid}"):
-                if st.button("Polter endgültig löschen", key=f"del_{pid}"):
-                    delete_one(pid)
-                    st.rerun()
+            with st.expander("Einzelnen Polter löschen"):
+                if st.checkbox("Löschen bestätigen", key=f"conf_{pid}"):
+                    if st.button("Polter endgültig löschen", key=f"del_{pid}"):
+                        delete_one(pid)
+                        st.rerun()
     else:
         st.info("Keine offenen oder teilweise abgefahrenen Polter zum Bearbeiten vorhanden.")
 
