@@ -888,6 +888,30 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
     border-color: #6F8A72 !important;
     box-shadow: 0 0 0 1px rgba(49,92,70,.12) !important;
 }
+
+/* 4. Bereitstellungen – optisch wie die übrigen Tabellenüberschriften */
+div[data-testid="stExpander"]:has(.bereitstellungen-marker) {
+    border: 1px solid rgba(49,92,70,.15) !important;
+    border-top: 3px solid #315C46 !important;
+    border-radius: 10px !important;
+    background: #FAFCF8 !important;
+    box-shadow: 0 2px 8px rgba(23,52,38,.025);
+    overflow: hidden;
+}
+div[data-testid="stExpander"]:has(.bereitstellungen-marker) summary {
+    min-height: 58px !important;
+    padding: .75rem 1rem !important;
+}
+div[data-testid="stExpander"]:has(.bereitstellungen-marker) summary p {
+    color: #173426 !important;
+    font-size: 1.5rem !important;
+    line-height: 1.25 !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.025em !important;
+}
+div[data-testid="stExpander"]:has(.bereitstellungen-marker) summary svg {
+    color: #315C46 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -2069,6 +2093,7 @@ with right:
 # 4. Bereitstellungen – standardmäßig eingeklappt
 # ----------------------------------------------------------
 with st.expander("4. Bereitstellungen", expanded=False):
+    st.markdown('<span class="bereitstellungen-marker"></span>', unsafe_allow_html=True)
     summary = (
         df.groupby(["lieferant", "fraechter", "bereitstellung"], dropna=False)
         .agg(
