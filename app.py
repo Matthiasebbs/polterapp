@@ -828,6 +828,21 @@ button[data-baseweb="tab"] {
     opacity: .80;
     margin-top: .08rem;
 }
+
+/* Kompakte Dropdowns statt Chip-Wolken */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    min-height: 42px !important;
+    background: rgba(255,255,255,.92) !important;
+    border: 1px solid rgba(47,90,67,.17) !important;
+    box-shadow: none !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div:hover {
+    border-color: rgba(47,90,67,.35) !important;
+}
+section[data-testid="stSidebar"] label {
+    color: #31483a !important;
+    font-weight: 600 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1157,9 +1172,7 @@ if df.empty:
 
 # ---------- Lieferantenfilter ----------
 # ------------------------------------------------------------
-# Professionelle Filterleiste
-# Leere Auswahl bedeutet bewusst "Alle" – dadurch bleibt die Seitenleiste
-# sauber und wird nicht mit Auswahl-Chips überladen.
+# Professionelle Filterleiste – kompakte Forst-Optik
 # ------------------------------------------------------------
 supplier_values = sorted([x for x in df["lieferant"].fillna("").unique().tolist() if x])
 fraechter_values = sorted([x for x in df["fraechter"].fillna("").unique().tolist() if x])
@@ -1169,15 +1182,18 @@ status_values = ["Offen","Eingeplant","In Abfuhr","Teilweise abgefahren","Abgefa
 
 FILTER_KEYS = [
     "filter_search",
-    "filter_supplier",
-    "filter_carrier",
-    "filter_status",
-    "filter_wood",
-    "filter_length",
+    "filter_supplier_single",
+    "filter_carrier_single",
+    "filter_status_single",
+    "filter_wood_single",
+    "filter_length_single",
 ]
 
 def reset_filters():
-    for key in FILTER_KEYS:
+    # Alte Multiselect-Zustände aus früheren App-Versionen ebenfalls entfernen.
+    for key in FILTER_KEYS + [
+        "filter_supplier","filter_carrier","filter_status","filter_wood","filter_length"
+    ]:
         st.session_state.pop(key, None)
 
 with st.sidebar:
@@ -1188,7 +1204,6 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    # Suche immer sichtbar, weil sie am häufigsten verwendet wird.
     search = st.text_input(
         "Schnellsuche",
         placeholder="Bereitstellung, Polter, Lagerort …",
@@ -1198,61 +1213,57 @@ with st.sidebar:
 
     with st.container(border=True):
         st.markdown("**🏢 Partner & Transport**")
-        supplier_choice = st.multiselect(
+
+        supplier_single = st.selectbox(
             "Lieferant",
-            supplier_values,
-            default=[],
-            key="filter_supplier",
-            placeholder="Alle Lieferanten",
-            help="Keine Auswahl = alle Lieferanten."
+            ["Alle Lieferanten"] + supplier_values,
+            index=0,
+            key="filter_supplier_single"
         )
-        fraechter_choice = st.multiselect(
+
+        fraechter_single = st.selectbox(
             "Frächter",
-            fraechter_values,
-            default=[],
-            key="filter_carrier",
-            placeholder="Alle Frächter",
-            help="Keine Auswahl = alle Frächter."
+            ["Alle Frächter"] + fraechter_values,
+            index=0,
+            key="filter_carrier_single"
         )
 
     with st.container(border=True):
         st.markdown("**🪵 Holz & Sortiment**")
-        wood_choice = st.multiselect(
+
+        wood_single = st.selectbox(
             "Holzart",
-            wood_values,
-            default=[],
-            key="filter_wood",
-            placeholder="Alle Holzarten",
-            help="Keine Auswahl = alle Holzarten."
+            ["Alle Holzarten"] + wood_values,
+            index=0,
+            key="filter_wood_single"
         )
-        length_choice = st.multiselect(
+
+        length_options = ["Alle Längen"] + length_values
+        length_single = st.selectbox(
             "Länge",
-            length_values,
-            default=[],
-            key="filter_length",
-            format_func=lambda x: f"{x:g} m",
-            placeholder="Alle Längen",
-            help="Zum Beispiel 3 m auswählen, um nur 3-m-Sortimente zu sehen."
+            length_options,
+            index=0,
+            key="filter_length_single",
+            format_func=lambda x: x if isinstance(x, str) else f"{x:g} m"
         )
 
     with st.container(border=True):
         st.markdown("**🚚 Abfuhrstatus**")
-        status_choice = st.multiselect(
+
+        status_single = st.selectbox(
             "Status",
-            status_values,
-            default=[],
-            key="filter_status",
-            placeholder="Alle Status",
-            help="Keine Auswahl = alle Status."
+            ["Alle Status"] + status_values,
+            index=0,
+            key="filter_status_single"
         )
 
     active_filter_count = (
         int(bool(search.strip()))
-        + int(bool(supplier_choice))
-        + int(bool(fraechter_choice))
-        + int(bool(wood_choice))
-        + int(bool(length_choice))
-        + int(bool(status_choice))
+        + int(supplier_single != "Alle Lieferanten")
+        + int(fraechter_single != "Alle Frächter")
+        + int(wood_single != "Alle Holzarten")
+        + int(length_single != "Alle Längen")
+        + int(status_single != "Alle Status")
     )
 
     if active_filter_count:
@@ -1268,24 +1279,105 @@ with st.sidebar:
     else:
         st.caption("Alle Daten werden angezeigt.")
 
+# Einheitliche Variablen für die bestehende Filterlogik.
+supplier_choice = [] if supplier_single == "Alle Lieferanten" else [supplier_single]
+fraechter_choice = [] if fraechter_single == "Alle Frächter" else [fraechter_single]
+wood_choice = [] if wood_single == "Alle Holzarten" else [wood_single]
+length_choice = [] if length_single == "Alle Längen" else [length_single]
+status_choice = [] if status_single == "Alle Status" else [status_single]
+
 # Feste Lieferantenfarben für die Karte.
 # Die Zuordnung bleibt stabil, solange die Lieferantennamen gleich bleiben.
 SUPPLIER_COLORS = [
-    "#1f77b4",  # blau
-    "#ff7f0e",  # orange
-    "#2ca02c",  # grün
-    "#d62728",  # rot
-    "#9467bd",  # violett
-    "#8c564b",  # braun
-    "#e377c2",  # pink
-    "#17becf",  # türkis
-    "#bcbd22",  # oliv
-    "#7f7f7f",  # grau
+    "#315C46",  # Tannengrün
+    "#6F7F52",  # Moosgrün
+    "#8A6B47",  # Holzbraun
+    "#6E8580",  # Salbeigrau
+    "#7A7065",  # Steingrau
+    "#55715B",  # Waldgrün
+    "#8B7D5B",  # Sandbraun
+    "#667A67",  # gedecktes Grün
+    "#796A58",  # Rindenbraun
+    "#5F6E69",  # Schiefergrün
 ]
 supplier_color_map = {
     name: SUPPLIER_COLORS[i % len(SUPPLIER_COLORS)]
     for i, name in enumerate(sorted(supplier_values))
 }
+
+
+def polter_pin_html(color, size=44):
+    """
+    Tropfenförmiger Forst-Marker mit stilisiertem Holzpolter.
+    Wird auf der Karte als DivIcon verwendet.
+    """
+    w = int(size)
+    h = int(size * 1.18)
+    return f"""
+    <div style="
+        width:{w}px;
+        height:{h}px;
+        position:relative;
+        transform: translate(-50%, -100%);
+        filter: drop-shadow(0 2px 3px rgba(20,35,25,.25));
+    ">
+        <svg viewBox="0 0 64 76" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">
+            <path d="M32 2
+                     C16 2 5 13 5 29
+                     C5 47 22 63 32 74
+                     C42 63 59 47 59 29
+                     C59 13 48 2 32 2Z"
+                  fill="{color}"
+                  stroke="#F4F1E9"
+                  stroke-width="3"/>
+            <g stroke="#F4F1E9" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="21" cy="27" r="4.3"/>
+                <circle cx="31" cy="24" r="4.3"/>
+                <circle cx="41" cy="27" r="4.3"/>
+                <circle cx="26" cy="35" r="4.3"/>
+                <circle cx="36" cy="35" r="4.3"/>
+                <path d="M17 43 C23 39, 41 39, 47 43"/>
+                <path d="M20 43 H44"/>
+            </g>
+        </svg>
+    </div>
+    """
+
+
+def polter_list_icon_html(color):
+    """
+    Kleines passendes Polter-Symbol für Listen/Tabellen.
+    """
+    return f"""
+    <span style="
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:22px;
+        height:27px;
+        margin-right:7px;
+        vertical-align:middle;
+        filter: drop-shadow(0 1px 1px rgba(20,35,25,.18));
+    ">
+        <svg viewBox="0 0 64 76" width="22" height="27" xmlns="http://www.w3.org/2000/svg">
+            <path d="M32 2
+                     C16 2 5 13 5 29
+                     C5 47 22 63 32 74
+                     C42 63 59 47 59 29
+                     C59 13 48 2 32 2Z"
+                  fill="{color}"
+                  stroke="#F4F1E9"
+                  stroke-width="3"/>
+            <g stroke="#F4F1E9" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="21" cy="27" r="4.3"/>
+                <circle cx="31" cy="24" r="4.3"/>
+                <circle cx="41" cy="27" r="4.3"/>
+                <circle cx="26" cy="35" r="4.3"/>
+                <circle cx="36" cy="35" r="4.3"/>
+            </g>
+        </svg>
+    </span>
+    """
 
 
 view = df.copy()
@@ -1436,19 +1528,19 @@ with left:
         Status: {r['status']}
         """
 
-        folium.CircleMarker(
+        folium.Marker(
             location=[float(r["lat"]), float(r["lon"])],
-            radius=8,
-            color=supplier_color,
-            fill=True,
-            fill_color=supplier_color,
-            fill_opacity=0.95,
-            weight=2,
             tooltip=(
                 f"{r['lieferant']} · {r['bereitstellung']} · "
                 f"Liste {liste} · Los {los} · Polter {polter}"
             ),
             popup=folium.Popup(pop, max_width=380),
+            icon=folium.DivIcon(
+                html=polter_pin_html(supplier_color, size=46),
+                icon_size=(46, 54),
+                icon_anchor=(23, 54),
+                class_name="polter-div-icon"
+            ),
         ).add_to(mp)
 
     # Einen vorgemerkten manuellen Punkt zusätzlich sichtbar machen.
@@ -1949,13 +2041,45 @@ def make_show(frame):
         "Länge m","RM Original","RM aktuell","FM Original","FM aktuell",
         "Abfuhrstatus","Status","Waldort","Lagerort","Bemerkung","Ansprechpartner","Breite","Länge","Quelldatei"
     ]
+    # Kleine Polter-Markierung als erste Spalte.
+    show.insert(0, "Polterzeichen", "●")
     return show
 
+def _supplier_icon_style(row):
+    supplier = str(row.get("Lieferant", ""))
+    color = supplier_color_map.get(supplier, "#667A67")
+    styles = [""] * len(row)
+    if "Polterzeichen" in row.index:
+        idx = list(row.index).index("Polterzeichen")
+        styles[idx] = f"color: {color}; font-size: 22px; font-weight: 700;"
+    return styles
+
+def style_open_rows(row):
+    return _supplier_icon_style(row)
+
 def style_partial_rows(row):
-    return ["background-color: #fce5cd; color: #7f6000"] * len(row)
+    styles = ["background-color: #f3eadf; color: #6f573e"] * len(row)
+    supplier = str(row.get("Lieferant", ""))
+    color = supplier_color_map.get(supplier, "#667A67")
+    if "Polterzeichen" in row.index:
+        idx = list(row.index).index("Polterzeichen")
+        styles[idx] = (
+            f"background-color: #f3eadf; color: {color}; "
+            "font-size: 22px; font-weight: 700;"
+        )
+    return styles
 
 def style_completed_rows(row):
-    return ["background-color: #d9ead3; color: #1f4e1f"] * len(row)
+    styles = ["background-color: #e2eadf; color: #294735"] * len(row)
+    supplier = str(row.get("Lieferant", ""))
+    color = supplier_color_map.get(supplier, "#667A67")
+    if "Polterzeichen" in row.index:
+        idx = list(row.index).index("Polterzeichen")
+        styles[idx] = (
+            f"background-color: #e2eadf; color: {color}; "
+            "font-size: 22px; font-weight: 700;"
+        )
+    return styles
 
 # ----------------------------------------------------------
 # Tabelle 1: Noch nicht abgefahren
@@ -1969,7 +2093,7 @@ if show_open.empty:
     st.info("Keine vollständig unangetasteten Polter in der aktuellen Filterauswahl.")
 else:
     st.dataframe(
-        show_open,
+        show_open.style.apply(style_open_rows, axis=1),
         use_container_width=True,
         hide_index=True,
         height=360
