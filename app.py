@@ -853,6 +853,26 @@ div[data-testid="stDataFrame"] {
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(23,52,38,.025);
 }
+
+/* Polter bearbeiten: dezente grüne Eingabefelder */
+div[data-testid="stNumberInput"] input,
+div[data-testid="stTextInput"] input,
+div[data-testid="stTextArea"] textarea {
+    background: #F3F7F1 !important;
+    border: 1px solid rgba(49,92,70,.18) !important;
+    color: #20382A !important;
+}
+div[data-testid="stNumberInput"] input:focus,
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stTextArea"] textarea:focus {
+    border-color: #6F8A72 !important;
+    box-shadow: 0 0 0 1px rgba(49,92,70,.12) !important;
+}
+div[data-testid="stNumberInput"] button {
+    background: #E8F0E5 !important;
+    color: #315C46 !important;
+    border-color: rgba(49,92,70,.12) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1318,8 +1338,8 @@ supplier_color_map = {
 
 def polter_pin_html(color, size=42):
     """
-    Forst-Pin wie im gewünschten Vorbild:
-    runde Kuppel, unten sauber spitz, innen ein klar erkennbares Holzpolter.
+    Forst-Pin mit Holzpyramide aus Stammenden:
+    unten 3 Kreise, darüber 2, oben 1.
     """
     w = int(size)
     h = int(size * 1.22)
@@ -1341,28 +1361,18 @@ def polter_pin_html(color, size=42):
                 C59 14.2 48.5 3 32 3 Z"
                 fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
 
-            <!-- Polter aus sichtbaren Stammenden, ähnlich dem Referenzsymbol -->
-            <g stroke="#F5F1E7" stroke-width="2.25" fill="none"
-               stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="23" cy="23" r="4.2"/>
-                <circle cx="34" cy="20" r="4.4"/>
-                <circle cx="43" cy="26" r="4.1"/>
-
-                <circle cx="17" cy="32" r="4.2"/>
-                <circle cx="28" cy="31" r="4.1"/>
-                <circle cx="38" cy="33" r="4.2"/>
-                <circle cx="48" cy="35" r="3.8"/>
-
-                <circle cx="21" cy="41" r="4.0"/>
-                <circle cx="32" cy="41" r="4.0"/>
-                <circle cx="42" cy="42" r="3.8"/>
-
-                <path d="M14 48 C22 45 41 45 49 48"/>
+            <!-- Holzpyramide: 1 / 2 / 3 -->
+            <g stroke="#F5F1E7" stroke-width="2.5" fill="none">
+                <circle cx="32" cy="24" r="4.4"/>
+                <circle cx="26" cy="33" r="4.4"/>
+                <circle cx="38" cy="33" r="4.4"/>
+                <circle cx="20" cy="42" r="4.4"/>
+                <circle cx="32" cy="42" r="4.4"/>
+                <circle cx="44" cy="42" r="4.4"/>
             </g>
         </svg>
     </div>
     """
-
 
 def polter_list_icon_data_uri(color):
     """
@@ -1373,12 +1383,13 @@ def polter_list_icon_data_uri(color):
       <path d="M32 3 C15.5 3 5 14.2 5 29.5 C5 44 17 57.2 32 75
                C47 57.2 59 44 59 29.5 C59 14.2 48.5 3 32 3 Z"
             fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
-      <g stroke="#F5F1E7" stroke-width="2.3" fill="none" stroke-linecap="round">
-        <circle cx="23" cy="23" r="4.2"/><circle cx="34" cy="20" r="4.4"/>
-        <circle cx="43" cy="26" r="4.1"/><circle cx="17" cy="32" r="4.2"/>
-        <circle cx="28" cy="31" r="4.1"/><circle cx="38" cy="33" r="4.2"/>
-        <circle cx="48" cy="35" r="3.8"/><circle cx="21" cy="41" r="4"/>
-        <circle cx="32" cy="41" r="4"/><circle cx="42" cy="42" r="3.8"/>
+      <g stroke="#F5F1E7" stroke-width="2.5" fill="none">
+        <circle cx="32" cy="24" r="4.4"/>
+        <circle cx="26" cy="33" r="4.4"/>
+        <circle cx="38" cy="33" r="4.4"/>
+        <circle cx="20" cy="42" r="4.4"/>
+        <circle cx="32" cy="42" r="4.4"/>
+        <circle cx="44" cy="42" r="4.4"/>
       </g>
     </svg>
     """
