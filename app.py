@@ -434,13 +434,16 @@ def parse_toerring(pages, filename):
     """
     Parser für Unternehmensgruppe Toerring-Jettenbach / Fulcrum Holzverwaltung.
 
-    Bereitstellungsname:
-      <Menge Los [EFm]>, <Losnummer>
-    Beispiel:
+    Interner Bereitstellungsname bleibt eindeutig:
       64.4, Kaindl_Ndh_26_01
 
-    Jeder Polter wird separat angelegt. GPS-Koordinaten sind in diesem
-    PDF-Typ nicht als numerische Werte vorhanden und bleiben deshalb leer.
+    Für die kurze Anzeige in "Polter bearbeiten" werden zusätzlich gespeichert:
+      hab = laufende Poltererfassungs-Nr. (z. B. 1)
+      los = verkürzte Losnummer ohne "Kaindl_" (z. B. Ndh_26_01)
+      bemerkung enthält die originale EFm-Menge dieses Polters.
+
+    Beispiel-Anzeige:
+      Törring 64,4, Ndh_26_01 - 1.1,23.8
     """
     text = "\n".join(pages)
     if "Unternehmensgruppe Toerring-Jettenbach" not in text or "Poltererfassung" not in text:
@@ -457,22 +460,38 @@ def parse_toerring(pages, filename):
     zert = re.search(r"PEFC Zertifikat Eigentümer ITJ-BY:\s*([^\n]+)", text)
 
     losnr = los.group(1).strip() if los else Path(filename).stem
-    menge_los_efm = los_efm.group(1).strip().replace(",", ".") if los_efm else ""
+    short_los = re.sub(r"^Kaindl_", "", losnr, flags=re.I)
+    menge_los_efm_raw = los_efm.group(1).strip() if los_efm else ""
+    menge_los_efm_dot = menge_los_efm_raw.replace(",", ".")
 
-    # Gewünschter Bereitstellungsname, z. B. "64.4, Kaindl_Ndh_26_01"
     bereitstellungsname = (
-        f"{menge_los_efm}, {losnr}"
-        if menge_los_efm
+        f"{menge_los_efm_dot}, {losnr}"
+        if menge_los_efm_dot
         else losnr
     )
 
-    matches = list(re.finditer(r"Polternummer\s+(\d+)", text))
-    rows = []
+    # Die Überschrift jeder Poltererfassung enthält:
+    # Poltererfassung - <laufend>. <Polternummer>, <EFm>
+    heads = list(re.finditer(
+        r"Poltererfassung\s*-\s*(\d+)\.\s*(\d+),\s*([\d.,]+)",
+        text,
+        re.I
+    ))
 
-    for i, m in enumerate(matches):
-        seg = text[m.start():(matches[i+1].start() if i+1 < len(matches) else len(text))]
+    rows = []
+    for i, h in enumerate(heads):
+        seg = text[h.start():(heads[i+1].start() if i+1 < len(heads) else len(text))]
+        item_no = h.group(1)
+        heading_polter = h.group(2)
+        heading_efm = h.group(3).replace(",", ".")
+
+        polter_m = re.search(r"Polternummer\s+(\d+)", seg)
         efm = re.search(r"Menge \[EFm\]\s+([\d.,]+)", seg)
         rm = re.search(r"Menge \[Rm\]\s+([\d.,]+)", seg)
+
+        polter_nr = polter_m.group(1) if polter_m else heading_polter
+        efm_original = n(efm.group(1)) if efm else n(heading_efm)
+        rm_original = n(rm.group(1)) if rm else None
 
         r = empty(filename)
         r.update(
@@ -480,8 +499,9 @@ def parse_toerring(pages, filename):
             lieferant="Unternehmensgruppe Toerring-Jettenbach",
             datum=datum.group(1).strip() if datum else "",
             holzliste=losnr,
-            los="",
-            polter_nr=m.group(1),
+            hab=item_no,
+            los=short_los,
+            polter_nr=polter_nr,
             holzart=baum.group(1).strip() if baum else "",
             sortiment=sort.group(1).strip() if sort else "",
             laenge_m=n(length.group(1)) if length else None,
@@ -493,19 +513,14 @@ def parse_toerring(pages, filename):
             ),
             lagerort="Frei Waldstraße",
             bemerkung=(
-                "Keine numerischen GPS-Koordinaten im PDF. "
-                "Koordinaten können in 'Polter bearbeiten' manuell auf der Karte gesetzt werden."
+                f"Toerring_EFm_original={efm_original if efm_original is not None else heading_efm}; "
+                "Keine numerischen GPS-Koordinaten im PDF."
             ),
             zertifikat=zert.group(1).strip() if zert else ""
         )
 
-        # Wie in der restlichen App: RM ist Basis, falls vorhanden.
-        # Der andere Wert wird mit 1,5 RM = 1 FM berechnet.
-        qty(
-            r,
-            n(rm.group(1)) if rm else None,
-            n(efm.group(1)) if efm else None
-        )
+        # Mengenregel der App bleibt unverändert: RM bevorzugt, FM daraus mit Faktor 1,5.
+        qty(r, rm_original, efm_original)
         rows.append(r)
 
     return rows
@@ -537,33 +552,29 @@ def extract_fraechter_from_filename(filename):
     """
     Frächter aus dem Dateinamen ableiten.
 
-    Regel:
-    - Eine Bereitstellungsnummer am Ende gehört NICHT zum Frächter.
-    - Bei z.B. "Kunde_26-0182 Astner.pdf" und "Kunde_26-0183 Astner.pdf"
-      ist der Frächter immer "Astner".
-    - Auch Varianten wie "...-0182 Astner" werden zu "Astner".
-    - "&" bleibt erhalten, z.B. "G&H".
+    Unterstützt auch automatisch erzeugte Kopie-Suffixe wie:
+      "... Hunglinger (1).pdf" -> Hunglinger
+      "... Hunglinger (2).pdf" -> Hunglinger
     """
     stem = Path(filename).stem.strip()
-
-    # Leerzeichen normalisieren.
     stem = re.sub(r"\s+", " ", stem)
 
-    # Wenn am Ende nach einem Leerzeichen ein Name/Frächter steht,
-    # ausschließlich diesen letzten Namensblock verwenden.
-    # Beispiele:
+    # Windows/Browser-Kopie-Suffix am Dateiende entfernen.
+    # z. B. "Hunglinger (1)" -> "Hunglinger"
+    stem = re.sub(r"\s*\(\d+\)\s*$", "", stem).strip()
+
+    # Name nach dem letzten Leerzeichen:
     # Kunde_26-0182 Astner -> Astner
-    # Kunde_26-0183 Astner -> Astner
-    # Kunde_26-0092 G&H    -> G&H
-    m = re.search(r"\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß&.' ]*)$", stem)
+    # Lieferschein_... Hunglinger -> Hunglinger
+    m = re.search(r"\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß&.'-]*)$", stem)
     if m:
         carrier = m.group(1).strip()
         if carrier:
             return carrier
 
-    # Variante mit Bindestrich direkt vor dem Frächter:
+    # Name nach letztem Bindestrich:
     # ...-Soller / ...-Ammer / ...-G&H
-    m = re.search(r"-([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß&.' ]*)$", stem)
+    m = re.search(r"-([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß&.'-]*)$", stem)
     if m:
         carrier = m.group(1).strip()
         if carrier:
@@ -595,6 +606,8 @@ def parse_pdf_bytes(data, filename):
         except Exception as e:
             attempts.append((name, 0, str(e)))
     fraechter = extract_fraechter_from_filename(filename)
+    if not fraechter:
+        fraechter = "Nicht angegeben"
     for row in best:
         row["fraechter"] = fraechter
     return best, best_name, attempts
@@ -718,6 +731,8 @@ def save_rows(rows):
             continue
         r = dict(row)
         r["lieferant"] = normalize_supplier_name(r.get("lieferant", ""))
+        if not str(r.get("fraechter", "") or "").strip():
+            r["fraechter"] = "Nicht angegeben"
         r["status"] = "Offen"
         r["interne_notiz"] = ""
         r["importiert_am"] = now
@@ -878,6 +893,9 @@ if not df.empty and "fraechter" in df.columns:
         .str.replace(r"^\d{3,6}\s+", "", regex=True)
         .str.strip()
     )
+    # PDFs ohne angegebenen/erkennbaren Frächter dürfen nicht aus dem
+    # Frächterfilter und damit aus "Polter bearbeiten" verschwinden.
+    df.loc[df["fraechter"] == "", "fraechter"] = "Nicht angegeben"
 
 # Alte Statusbezeichnung aus früheren Versionen kompatibel übernehmen.
 if not df.empty and "status" in df.columns:
@@ -1224,40 +1242,12 @@ with left:
 with right:
     st.subheader("3. Polter bearbeiten")
 
-    # Vollständig abgefahrene Polter dürfen hier nicht mehr bearbeitet werden.
-    # Für die Bearbeitung werden auch Polter OHNE GPS berücksichtigt.
-    # Außerdem darf ein frisch importierter Polter nicht nur wegen eines
-    # Statusfilters aus der Bearbeitung verschwinden.
+    # "Polter bearbeiten" zeigt bewusst ALLE noch nicht vollständig
+    # abgefahrenen Polter – unabhängig von den Sidebar-Filtern.
+    # So kann ein neu importierter Polter niemals nur deshalb verschwinden,
+    # weil sein Lieferant/Frächter im aktuellen Filter noch nicht ausgewählt ist.
+    # Polter ohne GPS werden ebenfalls ausdrücklich berücksichtigt.
     edit_view = df.copy()
-
-    # Dieselben fachlichen Filter wie links anwenden – Statusfilter bewusst NICHT,
-    # damit neu importierte/offene Polter sicher in "Polter bearbeiten" erscheinen.
-    if supplier_choice:
-        edit_view = edit_view[edit_view["lieferant"].isin(supplier_choice)]
-    else:
-        edit_view = edit_view.iloc[0:0]
-
-    if fraechter_choice:
-        edit_view = edit_view[edit_view["fraechter"].isin(fraechter_choice)]
-    else:
-        edit_view = edit_view.iloc[0:0]
-
-    if wood_choice:
-        edit_view = edit_view[edit_view["holzart"].isin(wood_choice)]
-
-    if length_choice:
-        edit_view = edit_view[edit_view["laenge_m"].isin(length_choice)]
-
-    if search.strip():
-        q = search.lower()
-        mask = pd.Series(False, index=edit_view.index)
-        for c in [
-            "bereitstellung","lieferant","fraechter","holzliste","hab","los",
-            "polter_nr","lagerort","waldort","bemerkung"
-        ]:
-            mask |= edit_view[c].fillna("").astype(str).str.lower().str.contains(q, regex=False)
-        edit_view = edit_view[mask]
-
     edit_view["abfuhrstatus"] = edit_view.apply(berechne_abfuhrstatus, axis=1)
     edit_view = edit_view[edit_view["abfuhrstatus"] != "Abgefahren"].copy()
 
@@ -1272,14 +1262,39 @@ with right:
         # Dropdown-Key jetzt IMMER eindeutig:
         # Liste + Los + Polter müssen sichtbar sein.
         opts = {}
+        edit_view = edit_view.sort_values("id", ascending=False)
         for _, r in edit_view.iterrows():
             liste = str(r["holzliste"] or "-")
             los = str(r["los"] or "-")
             polter = str(r["polter_nr"] or "-")
-            label = (
-                f"{r['lieferant']} · {r['fraechter'] or '-'} · "
-                f"{r['bereitstellung']} · Liste {liste} · Los {los} · Polter {polter}"
-            )
+
+            if str(r["lieferant"]) == "Unternehmensgruppe Toerring-Jettenbach":
+                # Gewünschtes kurzes Muster:
+                # Törring 64,4, Ndh_26_01 - 1.1,23.8
+                bereit_menge = str(r["bereitstellung"]).split(",", 1)[0].strip().replace(".", ",")
+                short_los = los if los not in ["", "-"] else re.sub(r"^Kaindl_", "", liste, flags=re.I)
+                item_no = str(r["hab"] or polter)
+
+                efm_original = None
+                bem = str(r.get("bemerkung", "") or "")
+                m_efm = re.search(r"Toerring_EFm_original=([\d.]+)", bem)
+                if m_efm:
+                    efm_original = m_efm.group(1)
+                elif pd.notna(r["kubatur_fm_original"]):
+                    efm_original = f"{float(r['kubatur_fm_original']):g}"
+                else:
+                    efm_original = "-"
+
+                label = (
+                    f"Törring {bereit_menge}, {short_los} - "
+                    f"{item_no}.{polter},{efm_original}"
+                )
+            else:
+                label = (
+                    f"{r['lieferant']} · {r['fraechter'] or '-'} · "
+                    f"{r['bereitstellung']} · Liste {liste} · Los {los} · Polter {polter}"
+                )
+
             opts[label] = int(r["id"])
 
         option_labels = list(opts.keys())
