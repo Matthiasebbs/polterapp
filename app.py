@@ -635,6 +635,202 @@ DB_PATH = APP_DIR / "polter.db"
 
 st.set_page_config(page_title="Polter-Zentrale", page_icon="🪵", layout="wide")
 
+st.markdown("""
+<style>
+/* ==========================================================
+   FORST-DESIGN
+   Ruhig, robust und professionell:
+   Tannengrün + Moosgrün + warme Holz-/Sandtöne
+   ========================================================== */
+
+:root {
+    --forest-900: #173426;
+    --forest-800: #214735;
+    --forest-700: #2f5a43;
+    --moss-500: #708b61;
+    --moss-100: #e8eee5;
+    --wood-500: #9a7550;
+    --sand-100: #f4f1e9;
+    --paper: #fbfcf9;
+    --ink: #1f2d25;
+    --muted: #6b776f;
+    --line: rgba(36, 73, 53, .14);
+}
+
+/* Hauptfläche */
+.stApp {
+    background:
+        linear-gradient(rgba(251,252,249,.965), rgba(251,252,249,.965)),
+        repeating-linear-gradient(
+            90deg,
+            rgba(47,90,67,.018) 0px,
+            rgba(47,90,67,.018) 1px,
+            transparent 1px,
+            transparent 32px
+        );
+    color: var(--ink);
+}
+
+/* Überschriften */
+h1, h2, h3 {
+    color: var(--forest-900);
+    letter-spacing: -0.025em;
+}
+h1 {
+    font-weight: 760 !important;
+}
+h2, h3 {
+    font-weight: 700 !important;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background:
+        linear-gradient(180deg, #edf2eb 0%, #f5f6f0 48%, #eee9df 100%);
+    border-right: 1px solid var(--line);
+}
+section[data-testid="stSidebar"] > div {
+    padding-top: 1rem;
+}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
+    background: rgba(255,255,255,.76);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(23,52,38,.035);
+}
+section[data-testid="stSidebar"] .stMultiSelect [data-baseweb="select"] > div,
+section[data-testid="stSidebar"] .stTextInput input {
+    border-radius: 9px;
+    border-color: rgba(47,90,67,.18);
+}
+section[data-testid="stSidebar"] .stButton > button {
+    width: 100%;
+}
+
+/* Buttons: Forstgrün, nicht knallig */
+.stButton > button[kind="primary"],
+button[data-testid="stBaseButton-primary"] {
+    background: var(--forest-700) !important;
+    border-color: var(--forest-700) !important;
+    color: white !important;
+    border-radius: 9px !important;
+}
+.stButton > button {
+    border-radius: 9px !important;
+    font-weight: 650 !important;
+}
+.stButton > button:hover {
+    border-color: var(--forest-700) !important;
+}
+
+/* Eingabefelder */
+.stTextInput input,
+.stNumberInput input,
+.stTextArea textarea,
+div[data-baseweb="select"] > div {
+    border-radius: 9px !important;
+}
+
+/* Kennzahlen wie kleine Bestandskarten */
+div[data-testid="stMetric"] {
+    background: rgba(255,255,255,.78);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--moss-500);
+    border-radius: 11px;
+    padding: .72rem .85rem;
+    box-shadow: 0 2px 8px rgba(23,52,38,.025);
+}
+div[data-testid="stMetricLabel"] {
+    color: var(--muted);
+}
+div[data-testid="stMetricValue"] {
+    color: var(--forest-900);
+}
+
+/* Tabellen / Dataframes */
+div[data-testid="stDataFrame"] {
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    overflow: hidden;
+}
+
+/* Expander */
+details {
+    border-radius: 10px !important;
+}
+
+/* Tabs */
+button[data-baseweb="tab"] {
+    font-weight: 650;
+}
+
+/* Sidebar Branding */
+.filter-kicker {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 800;
+    color: #f7f5ee;
+    background: var(--forest-800);
+    text-transform: uppercase;
+    letter-spacing: .11em;
+    padding: .3rem .52rem;
+    border-radius: 6px;
+    margin-bottom: .55rem;
+}
+.filter-title {
+    font-size: 1.42rem;
+    font-weight: 780;
+    color: var(--forest-900);
+    line-height: 1.1;
+    margin-bottom: .15rem;
+}
+.filter-subtitle {
+    color: var(--muted);
+    font-size: .84rem;
+    line-height: 1.35;
+    margin-bottom: .8rem;
+}
+.filter-summary {
+    background: var(--moss-100);
+    color: var(--forest-800);
+    border: 1px solid rgba(47,90,67,.16);
+    border-left: 4px solid var(--moss-500);
+    border-radius: 9px;
+    padding: .58rem .72rem;
+    font-size: .84rem;
+    font-weight: 600;
+    margin: .4rem 0 .7rem 0;
+}
+
+/* Kleine Forst-Kopfleiste */
+.forest-header {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    background: linear-gradient(105deg, #173426 0%, #2f5a43 72%, #607a56 100%);
+    color: white;
+    padding: .9rem 1.1rem;
+    border-radius: 13px;
+    margin: .1rem 0 1rem 0;
+    box-shadow: 0 4px 14px rgba(23,52,38,.10);
+}
+.forest-header-icon {
+    font-size: 1.65rem;
+    line-height: 1;
+}
+.forest-header-title {
+    font-size: 1.03rem;
+    font-weight: 750;
+    letter-spacing: .01em;
+}
+.forest-header-sub {
+    font-size: .78rem;
+    opacity: .80;
+    margin-top: .08rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
 FIELDS = [
     "quelle_datei","bereitstellung","lieferant","fraechter","vertragsnummer","datum","holzliste",
     "hab","los","polter_nr","holzart","sortiment","laenge_m","stueck",
@@ -885,6 +1081,16 @@ def berechne_abfuhrstatus(row):
     return "Nicht abgefahren"
 
 st.title("🪵 Polter-Zentrale")
+st.markdown("""
+<div class="forest-header">
+    <div class="forest-header-icon">🌲</div>
+    <div>
+        <div class="forest-header-title">Digitale Polterverwaltung</div>
+        <div class="forest-header-sub">Bereitstellungen · Bestände · Abfuhr · Standorte</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 st.caption("Alle zugesandten Bereitstellungsformate · Lieferanten-/Frächter-/Längenfilter · Mengenänderung · 1,5 RM = 1 FM · Löschen nach Abfuhr")
 
 if SB:
@@ -950,24 +1156,117 @@ if df.empty:
     st.stop()
 
 # ---------- Lieferantenfilter ----------
-st.sidebar.header("Ansicht filtern")
+# ------------------------------------------------------------
+# Professionelle Filterleiste
+# Leere Auswahl bedeutet bewusst "Alle" – dadurch bleibt die Seitenleiste
+# sauber und wird nicht mit Auswahl-Chips überladen.
+# ------------------------------------------------------------
 supplier_values = sorted([x for x in df["lieferant"].fillna("").unique().tolist() if x])
-supplier_choice = st.sidebar.multiselect(
-    "Lieferant",
-    supplier_values,
-    default=supplier_values,
-    help="Hier kannst du einen oder mehrere Lieferanten auswählen."
-)
-
 fraechter_values = sorted([x for x in df["fraechter"].fillna("").unique().tolist() if x])
-fraechter_choice = st.sidebar.multiselect(
-    "Frächter",
-    fraechter_values,
-    default=fraechter_values,
-    help="Der Frächter wird automatisch aus dem Ende des PDF-Dateinamens übernommen."
-)
+wood_values = sorted([x for x in df["holzart"].fillna("").unique().tolist() if x])
+length_values = sorted([float(x) for x in df["laenge_m"].dropna().unique().tolist()])
 status_values = ["Offen","Eingeplant","In Abfuhr","Teilweise abgefahren","Abgefahren"]
-status_choice = st.sidebar.multiselect("Status", status_values, default=status_values)
+
+FILTER_KEYS = [
+    "filter_search",
+    "filter_supplier",
+    "filter_carrier",
+    "filter_status",
+    "filter_wood",
+    "filter_length",
+]
+
+def reset_filters():
+    for key in FILTER_KEYS:
+        st.session_state.pop(key, None)
+
+with st.sidebar:
+    st.markdown('<div class="filter-kicker">🌲 Forstverwaltung</div>', unsafe_allow_html=True)
+    st.markdown('<div class="filter-title">Bestand filtern</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="filter-subtitle">Polterbestand nach Partner, Sortiment und Abfuhrstatus eingrenzen.</div>',
+        unsafe_allow_html=True
+    )
+
+    # Suche immer sichtbar, weil sie am häufigsten verwendet wird.
+    search = st.text_input(
+        "Schnellsuche",
+        placeholder="Bereitstellung, Polter, Lagerort …",
+        key="filter_search",
+        help="Durchsucht Bereitstellung, Lieferant, Frächter, Polter, Lagerort und Bemerkungen."
+    )
+
+    with st.container(border=True):
+        st.markdown("**🏢 Partner & Transport**")
+        supplier_choice = st.multiselect(
+            "Lieferant",
+            supplier_values,
+            default=[],
+            key="filter_supplier",
+            placeholder="Alle Lieferanten",
+            help="Keine Auswahl = alle Lieferanten."
+        )
+        fraechter_choice = st.multiselect(
+            "Frächter",
+            fraechter_values,
+            default=[],
+            key="filter_carrier",
+            placeholder="Alle Frächter",
+            help="Keine Auswahl = alle Frächter."
+        )
+
+    with st.container(border=True):
+        st.markdown("**🪵 Holz & Sortiment**")
+        wood_choice = st.multiselect(
+            "Holzart",
+            wood_values,
+            default=[],
+            key="filter_wood",
+            placeholder="Alle Holzarten",
+            help="Keine Auswahl = alle Holzarten."
+        )
+        length_choice = st.multiselect(
+            "Länge",
+            length_values,
+            default=[],
+            key="filter_length",
+            format_func=lambda x: f"{x:g} m",
+            placeholder="Alle Längen",
+            help="Zum Beispiel 3 m auswählen, um nur 3-m-Sortimente zu sehen."
+        )
+
+    with st.container(border=True):
+        st.markdown("**🚚 Abfuhrstatus**")
+        status_choice = st.multiselect(
+            "Status",
+            status_values,
+            default=[],
+            key="filter_status",
+            placeholder="Alle Status",
+            help="Keine Auswahl = alle Status."
+        )
+
+    active_filter_count = (
+        int(bool(search.strip()))
+        + int(bool(supplier_choice))
+        + int(bool(fraechter_choice))
+        + int(bool(wood_choice))
+        + int(bool(length_choice))
+        + int(bool(status_choice))
+    )
+
+    if active_filter_count:
+        st.markdown(
+            f'<div class="filter-summary">✓ {active_filter_count} Filter aktiv</div>',
+            unsafe_allow_html=True
+        )
+        st.button(
+            "↺ Alle Filter zurücksetzen",
+            on_click=reset_filters,
+            use_container_width=True
+        )
+    else:
+        st.caption("Alle Daten werden angezeigt.")
 
 # Feste Lieferantenfarben für die Karte.
 # Die Zuordnung bleibt stabil, solange die Lieferantennamen gleich bleiben.
@@ -988,38 +1287,19 @@ supplier_color_map = {
     for i, name in enumerate(sorted(supplier_values))
 }
 
-wood_values = sorted([x for x in df["holzart"].fillna("").unique().tolist() if x])
-wood_choice = st.sidebar.multiselect("Holzart (optional)", wood_values, default=[])
-
-# Längenfilter: z. B. nur 3-m-Holz anzeigen.
-length_values = sorted([
-    float(x) for x in df["laenge_m"].dropna().unique().tolist()
-])
-length_choice = st.sidebar.multiselect(
-    "Länge des Sortiments",
-    length_values,
-    default=[],
-    format_func=lambda x: f"{x:g} m",
-    help="Hier kannst du z. B. nur Polter mit 3 m langem Holz anzeigen lassen."
-)
-
-search = st.sidebar.text_input("Suche", placeholder="Bereitstellung, Polter, Lagerort …")
 
 view = df.copy()
+
+# Leere Auswahl = keine Einschränkung / alle anzeigen.
 if supplier_choice:
     view = view[view["lieferant"].isin(supplier_choice)]
-else:
-    view = view.iloc[0:0]
 
 if fraechter_choice:
     view = view[view["fraechter"].isin(fraechter_choice)]
-else:
-    view = view.iloc[0:0]
 
 if status_choice:
     view = view[view["status"].isin(status_choice)]
-else:
-    view = view.iloc[0:0]
+
 if wood_choice:
     view = view[view["holzart"].isin(wood_choice)]
 
