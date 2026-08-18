@@ -881,7 +881,11 @@ if not df.empty and "fraechter" in df.columns:
 
 # Alte Statusbezeichnung aus früheren Versionen kompatibel übernehmen.
 if not df.empty and "status" in df.columns:
-    df["status"] = df["status"].replace({"Erledigt": "Abgefahren"})
+    df["status"] = (
+        df["status"]
+        .fillna("")
+        .replace({"Erledigt": "Abgefahren", "": "Offen"})
+    )
 
 # Lieferanten vereinheitlichen:
 # "Stadtwerke München EW" und "Stadtwerke München Wasser"
@@ -1221,11 +1225,50 @@ with right:
     st.subheader("3. Polter bearbeiten")
 
     # Vollständig abgefahrene Polter dürfen hier nicht mehr bearbeitet werden.
-    edit_view = view.copy()
+    # Für die Bearbeitung werden auch Polter OHNE GPS berücksichtigt.
+    # Außerdem darf ein frisch importierter Polter nicht nur wegen eines
+    # Statusfilters aus der Bearbeitung verschwinden.
+    edit_view = df.copy()
+
+    # Dieselben fachlichen Filter wie links anwenden – Statusfilter bewusst NICHT,
+    # damit neu importierte/offene Polter sicher in "Polter bearbeiten" erscheinen.
+    if supplier_choice:
+        edit_view = edit_view[edit_view["lieferant"].isin(supplier_choice)]
+    else:
+        edit_view = edit_view.iloc[0:0]
+
+    if fraechter_choice:
+        edit_view = edit_view[edit_view["fraechter"].isin(fraechter_choice)]
+    else:
+        edit_view = edit_view.iloc[0:0]
+
+    if wood_choice:
+        edit_view = edit_view[edit_view["holzart"].isin(wood_choice)]
+
+    if length_choice:
+        edit_view = edit_view[edit_view["laenge_m"].isin(length_choice)]
+
+    if search.strip():
+        q = search.lower()
+        mask = pd.Series(False, index=edit_view.index)
+        for c in [
+            "bereitstellung","lieferant","fraechter","holzliste","hab","los",
+            "polter_nr","lagerort","waldort","bemerkung"
+        ]:
+            mask |= edit_view[c].fillna("").astype(str).str.lower().str.contains(q, regex=False)
+        edit_view = edit_view[mask]
+
     edit_view["abfuhrstatus"] = edit_view.apply(berechne_abfuhrstatus, axis=1)
     edit_view = edit_view[edit_view["abfuhrstatus"] != "Abgefahren"].copy()
 
     if not edit_view.empty:
+        ohne_gps_edit = int(edit_view[["lat","lon"]].isna().any(axis=1).sum())
+        if ohne_gps_edit:
+            st.caption(
+                f"{ohne_gps_edit} Polter in der Bearbeitung haben noch keine GPS-Koordinaten "
+                "und können über „Koordinaten manuell bearbeiten“ positioniert werden."
+            )
+
         # Dropdown-Key jetzt IMMER eindeutig:
         # Liste + Los + Polter müssen sichtbar sein.
         opts = {}
