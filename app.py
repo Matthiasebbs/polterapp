@@ -936,11 +936,42 @@ if search.strip():
         mask |= view[c].fillna("").astype(str).str.lower().str.contains(q, regex=False)
     view = view[mask]
 
-m1,m2,m3,m4 = st.columns(4)
-m1.metric("Polter", len(view))
-m2.metric("RM aktuell", f"{view['menge_rm_aktuell'].fillna(0).sum():,.1f}")
-m3.metric("FM / EFm aktuell", f"{view['kubatur_fm_aktuell'].fillna(0).sum():,.1f}")
-m4.metric("Lieferanten", view["lieferant"].nunique())
+# Oben getrennte Kennzahlen für aktive und bereits abgefahrene Polter.
+counter_view = view.copy()
+counter_view["abfuhrstatus"] = counter_view.apply(berechne_abfuhrstatus, axis=1)
+
+offen_counter = counter_view[counter_view["abfuhrstatus"] != "Abgefahren"].copy()
+abgefahren_counter = counter_view[counter_view["abfuhrstatus"] == "Abgefahren"].copy()
+
+m1,m2,m3,m4,m5,m6 = st.columns(6)
+
+m1.metric(
+    "Noch nicht abgefahren",
+    len(offen_counter),
+    help="Anzahl der offenen und teilweise abgefahrenen Polter."
+)
+m2.metric(
+    "RM offen",
+    f"{offen_counter['menge_rm_aktuell'].fillna(0).sum():,.1f}"
+)
+m3.metric(
+    "FM offen",
+    f"{offen_counter['kubatur_fm_aktuell'].fillna(0).sum():,.1f}"
+)
+
+m4.metric(
+    "Abgefahren",
+    len(abgefahren_counter),
+    help="Anzahl der vollständig abgefahrenen Polter."
+)
+m5.metric(
+    "RM abgefahren",
+    f"{(abgefahren_counter['menge_rm_original'].fillna(0) - abgefahren_counter['menge_rm_aktuell'].fillna(0)).sum():,.1f}"
+)
+m6.metric(
+    "FM abgefahren",
+    f"{(abgefahren_counter['kubatur_fm_original'].fillna(0) - abgefahren_counter['kubatur_fm_aktuell'].fillna(0)).sum():,.1f}"
+)
 
 left,right = st.columns([1.45,1])
 
