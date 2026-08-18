@@ -1,6 +1,7 @@
 
 import io
 import re
+import base64
 from pathlib import Path
 import pdfplumber
 
@@ -843,6 +844,15 @@ section[data-testid="stSidebar"] label {
     color: #31483a !important;
     font-weight: 600 !important;
 }
+
+/* Listen: dieselbe grüne Forstlinie wie im Rest der App */
+div[data-testid="stDataFrame"] {
+    border: 1px solid rgba(49,92,70,.15) !important;
+    border-top: 3px solid #315C46 !important;
+    border-radius: 10px !important;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(23,52,38,.025);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1289,16 +1299,16 @@ status_choice = [] if status_single == "Alle Status" else [status_single]
 # Feste Lieferantenfarben für die Karte.
 # Die Zuordnung bleibt stabil, solange die Lieferantennamen gleich bleiben.
 SUPPLIER_COLORS = [
-    "#315C46",  # Tannengrün
-    "#6F7F52",  # Moosgrün
-    "#8A6B47",  # Holzbraun
-    "#6E8580",  # Salbeigrau
-    "#7A7065",  # Steingrau
-    "#55715B",  # Waldgrün
-    "#8B7D5B",  # Sandbraun
-    "#667A67",  # gedecktes Grün
-    "#796A58",  # Rindenbraun
-    "#5F6E69",  # Schiefergrün
+    "#0F5A38",  # tiefes Tannengrün
+    "#7B8F3A",  # Moos / Olive
+    "#A56A2A",  # Holz / Ocker
+    "#4F7F86",  # Schiefer-Türkis
+    "#7A6A5A",  # Rindengrau
+    "#3D6B4F",  # Waldgrün
+    "#8C5B3D",  # Kastanienbraun
+    "#6A8247",  # Farn
+    "#5A6F78",  # kühles Schiefergrau
+    "#725F7D",  # gedecktes Pflaume
 ]
 supplier_color_map = {
     name: SUPPLIER_COLORS[i % len(SUPPLIER_COLORS)]
@@ -1306,78 +1316,74 @@ supplier_color_map = {
 }
 
 
-def polter_pin_html(color, size=44):
+def polter_pin_html(color, size=42):
     """
-    Tropfenförmiger Forst-Marker mit stilisiertem Holzpolter.
-    Wird auf der Karte als DivIcon verwendet.
+    Forst-Pin wie im gewünschten Vorbild:
+    runde Kuppel, unten sauber spitz, innen ein klar erkennbares Holzpolter.
     """
     w = int(size)
-    h = int(size * 1.18)
+    h = int(size * 1.22)
     return f"""
-    <div style="
+    <div class="polter-marker-wrap" style="
         width:{w}px;
         height:{h}px;
         position:relative;
-        transform: translate(-50%, -100%);
-        filter: drop-shadow(0 2px 3px rgba(20,35,25,.25));
+        transform-origin:50% 100%;
+        filter:drop-shadow(0 2px 3px rgba(18,35,24,.24));
+        transition:transform .14s ease-out;
     ">
-        <svg viewBox="0 0 64 76" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">
-            <path d="M32 2
-                     C16 2 5 13 5 29
-                     C5 47 22 63 32 74
-                     C42 63 59 47 59 29
-                     C59 13 48 2 32 2Z"
-                  fill="{color}"
-                  stroke="#F4F1E9"
-                  stroke-width="3"/>
-            <g stroke="#F4F1E9" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="21" cy="27" r="4.3"/>
-                <circle cx="31" cy="24" r="4.3"/>
-                <circle cx="41" cy="27" r="4.3"/>
-                <circle cx="26" cy="35" r="4.3"/>
-                <circle cx="36" cy="35" r="4.3"/>
-                <path d="M17 43 C23 39, 41 39, 47 43"/>
-                <path d="M20 43 H44"/>
+        <svg viewBox="0 0 64 78" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">
+            <path d="
+                M32 3
+                C15.5 3 5 14.2 5 29.5
+                C5 44 17 57.2 32 75
+                C47 57.2 59 44 59 29.5
+                C59 14.2 48.5 3 32 3 Z"
+                fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
+
+            <!-- Polter aus sichtbaren Stammenden, ähnlich dem Referenzsymbol -->
+            <g stroke="#F5F1E7" stroke-width="2.25" fill="none"
+               stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="23" cy="23" r="4.2"/>
+                <circle cx="34" cy="20" r="4.4"/>
+                <circle cx="43" cy="26" r="4.1"/>
+
+                <circle cx="17" cy="32" r="4.2"/>
+                <circle cx="28" cy="31" r="4.1"/>
+                <circle cx="38" cy="33" r="4.2"/>
+                <circle cx="48" cy="35" r="3.8"/>
+
+                <circle cx="21" cy="41" r="4.0"/>
+                <circle cx="32" cy="41" r="4.0"/>
+                <circle cx="42" cy="42" r="3.8"/>
+
+                <path d="M14 48 C22 45 41 45 49 48"/>
             </g>
         </svg>
     </div>
     """
 
 
-def polter_list_icon_html(color):
+def polter_list_icon_data_uri(color):
     """
-    Kleines passendes Polter-Symbol für Listen/Tabellen.
+    Kleine SVG-Version desselben Pins für die Tabellen.
     """
-    return f"""
-    <span style="
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        width:22px;
-        height:27px;
-        margin-right:7px;
-        vertical-align:middle;
-        filter: drop-shadow(0 1px 1px rgba(20,35,25,.18));
-    ">
-        <svg viewBox="0 0 64 76" width="22" height="27" xmlns="http://www.w3.org/2000/svg">
-            <path d="M32 2
-                     C16 2 5 13 5 29
-                     C5 47 22 63 32 74
-                     C42 63 59 47 59 29
-                     C59 13 48 2 32 2Z"
-                  fill="{color}"
-                  stroke="#F4F1E9"
-                  stroke-width="3"/>
-            <g stroke="#F4F1E9" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="21" cy="27" r="4.3"/>
-                <circle cx="31" cy="24" r="4.3"/>
-                <circle cx="41" cy="27" r="4.3"/>
-                <circle cx="26" cy="35" r="4.3"/>
-                <circle cx="36" cy="35" r="4.3"/>
-            </g>
-        </svg>
-    </span>
+    svg = f"""
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 78">
+      <path d="M32 3 C15.5 3 5 14.2 5 29.5 C5 44 17 57.2 32 75
+               C47 57.2 59 44 59 29.5 C59 14.2 48.5 3 32 3 Z"
+            fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
+      <g stroke="#F5F1E7" stroke-width="2.3" fill="none" stroke-linecap="round">
+        <circle cx="23" cy="23" r="4.2"/><circle cx="34" cy="20" r="4.4"/>
+        <circle cx="43" cy="26" r="4.1"/><circle cx="17" cy="32" r="4.2"/>
+        <circle cx="28" cy="31" r="4.1"/><circle cx="38" cy="33" r="4.2"/>
+        <circle cx="48" cy="35" r="3.8"/><circle cx="21" cy="41" r="4"/>
+        <circle cx="32" cy="41" r="4"/><circle cx="42" cy="42" r="3.8"/>
+      </g>
+    </svg>
     """
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 view = df.copy()
@@ -1536,12 +1542,45 @@ with left:
             ),
             popup=folium.Popup(pop, max_width=380),
             icon=folium.DivIcon(
-                html=polter_pin_html(supplier_color, size=46),
-                icon_size=(46, 54),
-                icon_anchor=(23, 54),
+                html=polter_pin_html(supplier_color, size=42),
+                icon_size=(42, 51),
+                icon_anchor=(21, 51),
                 class_name="polter-div-icon"
             ),
         ).add_to(mp)
+
+    # Markergröße abhängig vom Zoom:
+    # beim Herauszoomen kleiner, aber weiterhin gut sichtbar.
+    map_var = mp.get_name()
+    zoom_script = f"""
+    <script>
+    (function() {{
+        var mapObj = {map_var};
+
+        function updatePolterMarkerScale() {{
+            var z = mapObj.getZoom();
+
+            // Ziel:
+            // Zoom 13+ ≈ 100 %
+            // Zoom 10  ≈ 84 %
+            // Zoom 8   ≈ 72 %
+            // Zoom 6   ≈ 60 %
+            var scale = 0.60 + Math.max(0, Math.min(7, z - 6)) * 0.057;
+            scale = Math.max(0.60, Math.min(1.00, scale));
+
+            var nodes = document.querySelectorAll('.polter-marker-wrap');
+            nodes.forEach(function(node) {{
+                node.style.transform = 'scale(' + scale + ')';
+            }});
+        }}
+
+        mapObj.on('zoomend', updatePolterMarkerScale);
+        mapObj.whenReady(updatePolterMarkerScale);
+        setTimeout(updatePolterMarkerScale, 150);
+    }})();
+    </script>
+    """
+    mp.get_root().html.add_child(folium.Element(zoom_script))
 
     # Einen vorgemerkten manuellen Punkt zusätzlich sichtbar machen.
     pending_pid = st.session_state.get("_manual_coord_pending_pid")
@@ -2041,45 +2080,23 @@ def make_show(frame):
         "Länge m","RM Original","RM aktuell","FM Original","FM aktuell",
         "Abfuhrstatus","Status","Waldort","Lagerort","Bemerkung","Ansprechpartner","Breite","Länge","Quelldatei"
     ]
-    # Kleine Polter-Markierung als erste Spalte.
-    show.insert(0, "Polterzeichen", "●")
+    # Exakt dieselbe Pin-Sprache wie auf der Karte.
+    icons = [
+        polter_list_icon_data_uri(supplier_color_map.get(str(supplier), "#3D6B4F"))
+        for supplier in show["Lieferant"].tolist()
+    ]
+    show.insert(0, "Polterzeichen", icons)
     return show
 
-def _supplier_icon_style(row):
-    supplier = str(row.get("Lieferant", ""))
-    color = supplier_color_map.get(supplier, "#667A67")
-    styles = [""] * len(row)
-    if "Polterzeichen" in row.index:
-        idx = list(row.index).index("Polterzeichen")
-        styles[idx] = f"color: {color}; font-size: 22px; font-weight: 700;"
-    return styles
-
 def style_open_rows(row):
-    return _supplier_icon_style(row)
+    return ["background-color: #FAFCF8; color: #20382A"] * len(row)
 
 def style_partial_rows(row):
-    styles = ["background-color: #f3eadf; color: #6f573e"] * len(row)
-    supplier = str(row.get("Lieferant", ""))
-    color = supplier_color_map.get(supplier, "#667A67")
-    if "Polterzeichen" in row.index:
-        idx = list(row.index).index("Polterzeichen")
-        styles[idx] = (
-            f"background-color: #f3eadf; color: {color}; "
-            "font-size: 22px; font-weight: 700;"
-        )
-    return styles
+    # Teilweise abgefahren bleibt erkennbar warm, aber im Forst-Farbsystem.
+    return ["background-color: #F4EFE4; color: #5F503E"] * len(row)
 
 def style_completed_rows(row):
-    styles = ["background-color: #e2eadf; color: #294735"] * len(row)
-    supplier = str(row.get("Lieferant", ""))
-    color = supplier_color_map.get(supplier, "#667A67")
-    if "Polterzeichen" in row.index:
-        idx = list(row.index).index("Polterzeichen")
-        styles[idx] = (
-            f"background-color: #e2eadf; color: {color}; "
-            "font-size: 22px; font-weight: 700;"
-        )
-    return styles
+    return ["background-color: #E3ECE0; color: #294735"] * len(row)
 
 # ----------------------------------------------------------
 # Tabelle 1: Noch nicht abgefahren
@@ -2094,6 +2111,7 @@ if show_open.empty:
 else:
     st.dataframe(
         show_open.style.apply(style_open_rows, axis=1),
+        column_config={"Polterzeichen": st.column_config.ImageColumn("", width="small")},
         use_container_width=True,
         hide_index=True,
         height=360
@@ -2115,6 +2133,7 @@ if show_partial.empty:
 else:
     st.dataframe(
         show_partial.style.apply(style_partial_rows, axis=1),
+        column_config={"Polterzeichen": st.column_config.ImageColumn("", width="small")},
         use_container_width=True,
         hide_index=True,
         height=360
@@ -2136,6 +2155,7 @@ if show_done.empty:
 else:
     st.dataframe(
         show_done.style.apply(style_completed_rows, axis=1),
+        column_config={"Polterzeichen": st.column_config.ImageColumn("", width="small")},
         use_container_width=True,
         hide_index=True,
         height=320
