@@ -236,56 +236,184 @@ def parse_wbv_altoetting(pages, filename):
     return rows
 
 def parse_fbg_isar_lech(pages, filename):
+    """
+    Robuster Parser für FBG Isar-Lech / Bereitstellung BA-...
+
+    Unterstützt jetzt auch:
+    - Polternummern mit Punkt, z. B. 1.062 / 1.063
+    - RM- und FM-Positionen innerhalb derselben Bereitstellung
+    - zusammengeklebte PDF-Texte wie "407Wei-BR-oa-3.0"
+    - GPS-Werte, die in den Folgezeilen unter der Polterzeile stehen
+    - mehrere Sortimentszeilen für denselben Polter (werden zu EINEM Polter summiert)
+
+    Mengenregel der App:
+    1,5 RM = 1 FM.
+    Aus dem PDF wird je Positionszeile nur die dort angegebene Einheit als Basis
+    genommen; der andere Wert wird daraus berechnet.
+    """
     first = pages[0] if pages else ""
-    if "Bereitstellung BA-" not in first or "FBG" not in first and "Isar-Lech" not in first:
-        # Text extraction may not contain logo name; BA structure is distinctive enough.
-        if "Bereitstellung BA-" not in first or "GPS-N GPS-O" not in first:
-            return []
-    nr = re.search(r"Bereitstellung\s+(BA-\d+)", first)
+    if "Bereitstellung BA-" not in first or "GPS-N GPS-O" not in first:
+        return []
+
+    nr = re.search(r"Bereitstellung\s+(BA-\d+)", first, re.I)
     if not nr:
         return []
-    date = re.search(r"ausgegeben am:\s*([^\n]+)", first)
-    contract = re.search(r"Vertrag:\s*([^\n]+)", first)
-    ap = re.search(r"Ihr Ansprechpartner:\s*([^\n]+)", first)
-    revier = re.search(r"Revier:\s*([^\n]+)", first)
 
-    lines = [x.strip() for x in first.splitlines()]
-    rows = []
-    pending_gps = None
-    for i, s in enumerate(lines):
-        gps = re.match(r"^(\d{1,2},\d{5,8})\s+(\d{1,3},\d{5,8})$", s)
-        if gps:
-            pending_gps = (n(gps.group(1)), n(gps.group(2)))
-            continue
-        m = re.match(
-            r"^(\d+)\s+(\d+)\s+(\d+)\s+([A-Za-z]+-[A-Za-z]+-[A-Za-z]+-[\d.]+)\s+"
-            r"(\d+)\s+([\d,]+)\s+Rm(?:\s+m\.R\.)?$", s
-        )
+    date = re.search(r"ausgegeben am:\s*([^\n]+)", first, re.I)
+    contract = re.search(r"Vertrag:\s*([^\n]+)", first, re.I)
+    ap = re.search(r"Ihr Ansprechpartner:\s*([^\n]+)", first, re.I)
+    revier = re.search(r"Revier:\s*([^\n]+)", first, re.I)
+
+    lines = [re.sub(r"\s+", " ", x.strip()) for x in first.splitlines() if x.strip()]
+
+    # Erlaubt sowohl sauber getrennte als auch "zusammengeklebte" Varianten.
+    # Beispiel:
+    # 261504 861 407 Wei-BR-oa-3.0 0 1,360 Rm m.R. 0,816 48,221921
+    # 261504 861 407Wei-BR-oa-3.0 0 1,360 Rm m.R. 0,816 48,221921
+    row_re = re.compile(
+        r"^(?P<liste>\d+)\s+"
+        r"(?P<los>\d+)\s+"
+        r"(?P<polter>\d+(?:\.\d+)?)\s*"
+        r"(?P<sort>[A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß0-9.]+)+)\s+"
+        r"(?:(?P<stck>\d+)\s+)?"
+        r"(?P<menge>\d+(?:,\d+)?)\s+"
+        r"(?P<unit>Rm|Fm)\s*(?:m\.R\.|o\.R\.)?\s+"
+        r"(?P<kubatur>\d+(?:,\d+)?)"
+        r"(?:\s+(?P<lat>\d{1,2},\d{5,8}))?"
+        r"(?:\s+(?P<lon>\d{1,3},\d{5,8}))?"
+        r"$",
+        re.I
+    )
+
+    raw_rows = []
+    i = 0
+    while i < len(lines):
+        s = lines[i]
+        m = row_re.match(s)
         if not m:
+            i += 1
             continue
-        liste, los, pnr, sort, stck, amount = m.groups()
-        parts = sort.split("-")
+
+        d = m.groupdict()
+        lat = n(d.get("lat"))
+        lon = n(d.get("lon"))
+
+        # GPS kann in den folgenden Zeilen stehen:
+        # 48,519901
+        # (48° ...)
+        # 11,178170
+        # (11° ...)
+        j = i + 1
+        numeric_follow = []
+        while j < len(lines) and j <= i + 5:
+            nxt = lines[j]
+            if row_re.match(nxt):
+                break
+            if re.fullmatch(r"\d{1,3},\d{5,8}", nxt):
+                numeric_follow.append(n(nxt))
+            elif nxt.startswith("∑") or nxt.startswith("Revier:") or nxt.startswith("Bemerkung:"):
+                break
+            j += 1
+
+        if lat is None and numeric_follow:
+            lat = numeric_follow[0]
+        if lon is None and len(numeric_follow) >= 2:
+            lon = numeric_follow[1]
+
+        amount = n(d["menge"])
+        unit = d["unit"].lower()
+        # Nur die im PDF angegebene Einheit ist Basis.
+        if unit == "rm":
+            rm_val = amount
+            fm_val = round(float(amount) / 1.5, 3) if amount is not None else None
+        else:
+            fm_val = amount
+            rm_val = round(float(amount) * 1.5, 3) if amount is not None else None
+
+        sortiment = d["sort"]
+        parts = sortiment.split("-")
+        laenge = None
+        # Länge ist meist die letzte sinnvolle Dezimalzahl im Sortiment.
+        for token in reversed(parts):
+            try:
+                val = float(token)
+                if 1.0 <= val <= 12.0:
+                    laenge = val
+                    break
+            except Exception:
+                pass
+
+        raw_rows.append({
+            "liste": d["liste"],
+            "los": d["los"],
+            "polter": d["polter"],
+            "sortiment": sortiment,
+            "holzart": parts[0] if parts else "",
+            "laenge": laenge,
+            "stueck": n(d["stck"]),
+            "rm": rm_val,
+            "fm": fm_val,
+            "lat": lat,
+            "lon": lon,
+        })
+        i += 1
+
+    # Mehrere Positionszeilen desselben Polters zusammenfassen.
+    grouped = {}
+    for rr in raw_rows:
+        key = (rr["liste"], rr["los"], rr["polter"])
+        if key not in grouped:
+            grouped[key] = dict(rr)
+            grouped[key]["sortimente"] = [rr["sortiment"]]
+        else:
+            g = grouped[key]
+            g["rm"] = round(float(g.get("rm") or 0) + float(rr.get("rm") or 0), 3)
+            g["fm"] = round(float(g.get("fm") or 0) + float(rr.get("fm") or 0), 3)
+            g["stueck"] = float(g.get("stueck") or 0) + float(rr.get("stueck") or 0)
+            if rr["sortiment"] not in g["sortimente"]:
+                g["sortimente"].append(rr["sortiment"])
+            if g.get("lat") is None:
+                g["lat"] = rr.get("lat")
+            if g.get("lon") is None:
+                g["lon"] = rr.get("lon")
+            if g.get("laenge") is None:
+                g["laenge"] = rr.get("laenge")
+
+    rows = []
+    for (liste, los, pnr), g in grouped.items():
         note = ""
-        nm = re.search(rf"(?m)^P{re.escape(pnr)}:\s*(.+)$", first)
+        nm = re.search(rf"(?mi)^P{re.escape(str(pnr))}:\s*(.+)$", first)
         if nm:
             note = nm.group(1).strip()
+
         r = empty(filename)
         r.update(
-            bereitstellung=nr.group(1), lieferant="FBG Isar-Lech",
+            bereitstellung=nr.group(1),
+            lieferant="FBG Isar-Lech",
             vertragsnummer=contract.group(1).strip() if contract else "",
             datum=date.group(1).strip() if date else "",
-            holzliste=liste, los=los, polter_nr=pnr,
-            holzart=parts[0], sortiment=sort,
-            laenge_m=n(parts[-1]), stueck=n(stck), einheit="Rm",
-            lat=pending_gps[0] if pending_gps else None,
-            lon=pending_gps[1] if pending_gps else None,
+            holzliste=liste,
+            los=los,
+            polter_nr=pnr,
+            holzart=g.get("holzart", ""),
+            sortiment=" / ".join(g.get("sortimente", [])),
+            laenge_m=g.get("laenge"),
+            stueck=g.get("stueck"),
+            einheit="RM / FM",
+            lat=g.get("lat"),
+            lon=g.get("lon"),
             waldort=revier.group(1).strip() if revier else "",
             bemerkung=note,
             ansprechpartner=ap.group(1).strip() if ap else ""
         )
-        qty(r, n(amount), None)
+
+        # grouped enthält bereits beide Werte gemäß Faktor 1,5.
+        r["menge_rm_original"] = g.get("rm")
+        r["menge_rm_aktuell"] = g.get("rm")
+        r["kubatur_fm_original"] = g.get("fm")
+        r["kubatur_fm_aktuell"] = g.get("fm")
         rows.append(r)
-        pending_gps = None
+
     return rows
 
 def parse_toerring(pages, filename):
