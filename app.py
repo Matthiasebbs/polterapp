@@ -873,6 +873,21 @@ div[data-testid="stNumberInput"] button {
     color: #315C46 !important;
     border-color: rgba(49,92,70,.12) !important;
 }
+
+/* Polter auswählen: identische dezente Forst-Optik wie die Eingabefelder */
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background: #F3F7F1 !important;
+    border: 1px solid rgba(49,92,70,.18) !important;
+    color: #20382A !important;
+    border-radius: 9px !important;
+}
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover {
+    border-color: #6F8A72 !important;
+}
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
+    border-color: #6F8A72 !important;
+    box-shadow: 0 0 0 1px rgba(49,92,70,.12) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
