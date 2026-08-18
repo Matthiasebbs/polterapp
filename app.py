@@ -724,30 +724,64 @@ def duplicate(row):
     return bool(mask.any())
 
 def save_rows(rows):
+    """
+    Neue Polter effizient speichern.
+    Supabase wird beim Import nur einmal gelesen und neue Zeilen werden gesammelt
+    eingefügt. Das macht besonders größere PDFs deutlich schneller.
+    """
+    if not rows:
+        return 0
+
     now = datetime.now().isoformat(timespec="seconds")
-    n = 0
+    existing = df_all()
+
+    keycols = ["bereitstellung","holzliste","hab","los","polter_nr","quelle_datei"]
+    existing_keys = set()
+
+    if not existing.empty:
+        for _, er in existing.iterrows():
+            existing_keys.add(tuple(
+                str(er.get(c) if pd.notna(er.get(c)) else "")
+                for c in keycols
+            ))
+
+    new_rows = []
     for row in rows:
-        if duplicate(row):
-            continue
         r = dict(row)
+        key = tuple(str(r.get(c) or "") for c in keycols)
+
+        if key in existing_keys:
+            continue
+
         r["lieferant"] = normalize_supplier_name(r.get("lieferant", ""))
         if not str(r.get("fraechter", "") or "").strip():
             r["fraechter"] = "Nicht angegeben"
+
         r["status"] = "Offen"
         r["interne_notiz"] = ""
         r["importiert_am"] = now
         r["geaendert_am"] = now
-        if SB:
-            SB.table("polter").insert(r).execute()
-        else:
-            vals = [r.get(c) for c in FIELDS]
-            CON.execute(
-                f"INSERT INTO polter ({','.join(FIELDS)}) VALUES ({','.join(['?']*len(FIELDS))})",
-                vals
-            )
-            CON.commit()
-        n += 1
-    return n
+
+        # Nur bekannte DB-Felder senden.
+        r = {c: r.get(c) for c in FIELDS}
+        new_rows.append(r)
+        existing_keys.add(key)
+
+    if not new_rows:
+        return 0
+
+    if SB:
+        # Eine einzige Netzwerkoperation statt einer pro Polter.
+        SB.table("polter").insert(new_rows).execute()
+    else:
+        vals = [[r.get(c) for c in FIELDS] for r in new_rows]
+        CON.executemany(
+            f"INSERT INTO polter ({','.join(FIELDS)}) VALUES ({','.join(['?']*len(FIELDS))})",
+            vals
+        )
+        CON.commit()
+
+    return len(new_rows)
 
 def update_polter(pid, rm, fm, status, note, lat, lon):
     values = {
@@ -1157,6 +1191,7 @@ with left:
         mp,
         use_container_width=True,
         height=610,
+        key="polter_map",
         returned_objects=[
             "last_clicked",
             "last_object_clicked",
@@ -1165,30 +1200,44 @@ with left:
     )
 
     if isinstance(map_state, dict):
+        # Den letzten freien Kartenklick immer merken. Das verhindert,
+        # dass beim Einschalten des manuellen Modus ein alter Klick erneut
+        # als neuer Standort übernommen wird.
+        raw_click = map_state.get("last_clicked")
+        raw_click_signature = None
+        if isinstance(raw_click, dict):
+            raw_lat = raw_click.get("lat")
+            raw_lng = raw_click.get("lng")
+            if raw_lat is not None and raw_lng is not None:
+                raw_click_signature = f"{float(raw_lat):.7f}|{float(raw_lng):.7f}"
+
         # --------------------------------------------------------
-        # A) Manueller Koordinatenmodus:
-        # beliebiger Kartenklick = neuer Standort für aktiven Polter
+        # A) Manueller Koordinatenmodus
         # --------------------------------------------------------
         if manual_enabled and manual_pid is not None:
-            click = map_state.get("last_clicked")
-            if isinstance(click, dict):
-                click_lat = click.get("lat")
-                click_lng = click.get("lng")
+            if isinstance(raw_click, dict):
+                click_lat = raw_click.get("lat")
+                click_lng = raw_click.get("lng")
 
                 if click_lat is not None and click_lng is not None:
-                    signature = (
-                        f"{manual_pid}|{float(click_lat):.7f}|{float(click_lng):.7f}"
-                    )
-                    if signature != st.session_state.get("_last_manual_coord_click"):
-                        st.session_state["_last_manual_coord_click"] = signature
+                    ignore_signature = st.session_state.get("_manual_ignore_click_signature")
+                    accepted_signature = st.session_state.get("_manual_last_accepted_signature")
+
+                    # Nur einen wirklich NEUEN Klick übernehmen.
+                    if (
+                        raw_click_signature
+                        and raw_click_signature != ignore_signature
+                        and raw_click_signature != accepted_signature
+                    ):
+                        st.session_state["_manual_last_accepted_signature"] = raw_click_signature
                         st.session_state["_manual_coord_pending_pid"] = int(manual_pid)
                         st.session_state["_manual_coord_pending_lat"] = float(click_lat)
                         st.session_state["_manual_coord_pending_lon"] = float(click_lng)
-                        st.rerun()
+                        # Kein zusätzlicher Rerun: der Kartenklick selbst hat den
+                        # aktuellen Durchlauf bereits ausgelöst.
 
         # --------------------------------------------------------
-        # B) Normalmodus:
-        # vorhandenen Marker anklicken -> Polter bearbeiten auswählen
+        # B) Normalmodus: Marker anklicken -> Polter auswählen
         # --------------------------------------------------------
         else:
             clicked_obj = map_state.get("last_object_clicked")
@@ -1239,45 +1288,44 @@ with left:
                     st.session_state["_map_selected_polter_id"] = clicked_id
                     st.rerun()
 
+        if raw_click_signature:
+            st.session_state["_last_seen_map_click_signature"] = raw_click_signature
+
 with right:
     st.subheader("3. Polter bearbeiten")
 
-    # "Polter bearbeiten" zeigt bewusst ALLE noch nicht vollständig
-    # abgefahrenen Polter – unabhängig von den Sidebar-Filtern.
-    # So kann ein neu importierter Polter niemals nur deshalb verschwinden,
-    # weil sein Lieferant/Frächter im aktuellen Filter noch nicht ausgewählt ist.
-    # Polter ohne GPS werden ebenfalls ausdrücklich berücksichtigt.
+    # Immer alle noch nicht vollständig abgefahrenen Polter anbieten.
+    # Sidebar-Filter dürfen neu importierte Polter hier nicht "verstecken".
     edit_view = df.copy()
     edit_view["abfuhrstatus"] = edit_view.apply(berechne_abfuhrstatus, axis=1)
     edit_view = edit_view[edit_view["abfuhrstatus"] != "Abgefahren"].copy()
+    edit_view = edit_view.sort_values("id", ascending=False)
 
-    if not edit_view.empty:
+    if edit_view.empty:
+        st.info("Keine offenen oder teilweise abgefahrenen Polter zum Bearbeiten vorhanden.")
+    else:
         ohne_gps_edit = int(edit_view[["lat","lon"]].isna().any(axis=1).sum())
         if ohne_gps_edit:
             st.caption(
-                f"{ohne_gps_edit} Polter in der Bearbeitung haben noch keine GPS-Koordinaten "
-                "und können über „Koordinaten manuell bearbeiten“ positioniert werden."
+                f"{ohne_gps_edit} Polter haben noch keine GPS-Koordinaten und können "
+                "über „Koordinaten manuell bearbeiten“ positioniert werden."
             )
 
-        # Dropdown-Key jetzt IMMER eindeutig:
-        # Liste + Los + Polter müssen sichtbar sein.
         opts = {}
-        edit_view = edit_view.sort_values("id", ascending=False)
         for _, r in edit_view.iterrows():
             liste = str(r["holzliste"] or "-")
             los = str(r["los"] or "-")
             polter = str(r["polter_nr"] or "-")
 
             if str(r["lieferant"]) == "Unternehmensgruppe Toerring-Jettenbach":
-                # Gewünschtes kurzes Muster:
+                # Kurzes Törring-Muster:
                 # Törring 64,4, Ndh_26_01 - 1.1,23.8
                 bereit_menge = str(r["bereitstellung"]).split(",", 1)[0].strip().replace(".", ",")
                 short_los = los if los not in ["", "-"] else re.sub(r"^Kaindl_", "", liste, flags=re.I)
                 item_no = str(r["hab"] or polter)
 
-                efm_original = None
                 bem = str(r.get("bemerkung", "") or "")
-                m_efm = re.search(r"Toerring_EFm_original=([\d.]+)", bem)
+                m_efm = re.search(r"Toerring_EFm_original=([\\d.]+)", bem)
                 if m_efm:
                     efm_original = m_efm.group(1)
                 elif pd.notna(r["kubatur_fm_original"]):
@@ -1299,20 +1347,16 @@ with right:
 
         option_labels = list(opts.keys())
 
-        # Falls ein Kartenpunkt angeklickt wurde, die zugehörige Dropdown-Beschriftung
-        # direkt in den Selectbox-State schreiben.
+        # Kartenklick hat Vorrang für die Vorwahl.
         map_selected_id = st.session_state.get("_map_selected_polter_id")
-
         if map_selected_id is not None:
             target_label = next(
                 (label for label in option_labels if opts[label] == int(map_selected_id)),
                 None
             )
-            if target_label is not None:
+            if target_label:
                 st.session_state["edit_polter_selector"] = target_label
 
-        # Falls der gespeicherte Selectbox-Wert durch Filter nicht mehr vorhanden ist,
-        # sauber auf den ersten verfügbaren Polter zurückfallen.
         if (
             "edit_polter_selector" in st.session_state
             and st.session_state["edit_polter_selector"] not in option_labels
@@ -1326,231 +1370,262 @@ with right:
         )
         pid = opts[selected]
 
-        # Aktuellen Bearbeitungs-Polter für den manuellen Kartenmodus merken.
         st.session_state["_coord_edit_polter_id"] = int(pid)
-
         if map_selected_id is not None and pid == int(map_selected_id):
             st.session_state.pop("_map_selected_polter_id", None)
 
         row_match = df[df["id"] == pid]
         if row_match.empty:
-            st.warning("Dieser Polter ist momentan nicht mehr verfügbar. Bitte die Seite neu laden.")
+            st.warning("Dieser Polter ist nicht mehr verfügbar. Bitte Seite neu laden.")
         else:
-            row = row_match.iloc[0]
+            selected_row = row_match.iloc[0]
 
-            def safe_num(value, default=0.0):
-                try:
-                    if pd.isna(value):
+            @st.fragment
+            def render_polter_editor(pid, row):
+                def safe_num(value, default=0.0):
+                    try:
+                        if pd.isna(value):
+                            return float(default)
+                        return float(value)
+                    except Exception:
                         return float(default)
-                    return float(value)
-                except Exception:
-                    return float(default)
 
-            UMR_FACTOR = 1.5
-            EPS = 0.0005
+                UMR_FACTOR = 1.5
+                EPS = 0.0005
 
-            old_rm = safe_num(row["menge_rm_aktuell"])
-            old_fm = safe_num(row["kubatur_fm_aktuell"])
-            original_rm = safe_num(row["menge_rm_original"])
+                old_rm = safe_num(row["menge_rm_aktuell"])
+                old_fm = safe_num(row["kubatur_fm_aktuell"])
+                original_rm = safe_num(row["menge_rm_original"])
 
-            selected_pid_key = "_edit_selected_pid"
-            previous_pid = st.session_state.get(selected_pid_key)
+                selected_pid_key = "_edit_selected_pid"
+                previous_pid = st.session_state.get(selected_pid_key)
 
-            # Bei Polter-Wechsel sämtliche alten Edit-Widgetwerte entfernen.
-            # So hängen keine 0-Werte vom zuvor geöffneten Polter fest.
-            if previous_pid != pid:
-                for key in list(st.session_state.keys()):
-                    if (
-                        str(key).startswith("edit_rm_")
-                        or str(key).startswith("edit_fm_")
-                        or str(key).startswith("edit_status_")
-                        or str(key).startswith("edit_note_")
-                        or str(key).startswith("edit_lat_")
-                        or str(key).startswith("edit_lon_")
-                    ):
-                        st.session_state.pop(key, None)
-                st.session_state[selected_pid_key] = pid
+                # Beim Wechsel wirklich alle alten Eingabewerte des Editors entfernen.
+                if previous_pid != pid:
+                    for key in list(st.session_state.keys()):
+                        if (
+                            str(key).startswith("edit_rm_")
+                            or str(key).startswith("edit_fm_")
+                            or str(key).startswith("edit_status_")
+                            or str(key).startswith("edit_note_")
+                            or str(key).startswith("edit_lat_")
+                            or str(key).startswith("edit_lon_")
+                        ):
+                            st.session_state.pop(key, None)
 
-            rm_key = f"edit_rm_{pid}"
-            fm_key = f"edit_fm_{pid}"
-            status_key = f"edit_status_{pid}"
-            note_key = f"edit_note_{pid}"
-            lat_key = f"edit_lat_{pid}"
-            lon_key = f"edit_lon_{pid}"
+                    # Auch einen eventuell offenen Koordinatenmodus des alten Polters beenden.
+                    if previous_pid is not None:
+                        st.session_state.pop(f"coord_manual_enabled_{previous_pid}", None)
 
-            # Echte DB-Werte laden, nicht 0 als Default.
-            if rm_key not in st.session_state:
-                st.session_state[rm_key] = old_rm
-            if fm_key not in st.session_state:
-                st.session_state[fm_key] = old_fm
-            if status_key not in st.session_state:
-                st.session_state[status_key] = str(row["status"] or "Offen")
-            if note_key not in st.session_state:
-                st.session_state[note_key] = row["interne_notiz"] or ""
-            if lat_key not in st.session_state:
-                st.session_state[lat_key] = safe_num(row["lat"])
-            if lon_key not in st.session_state:
-                st.session_state[lon_key] = safe_num(row["lon"])
+                    st.session_state[selected_pid_key] = pid
 
-            def automatic_status(rm_value):
-                rm_value = safe_num(rm_value)
-                if rm_value <= EPS:
-                    return "Abgefahren"
-                if original_rm > 0 and rm_value < original_rm - EPS:
-                    return "Teilweise abgefahren"
+                rm_key = f"edit_rm_{pid}"
+                fm_key = f"edit_fm_{pid}"
+                status_key = f"edit_status_{pid}"
+                note_key = f"edit_note_{pid}"
+                lat_key = f"edit_lat_{pid}"
+                lon_key = f"edit_lon_{pid}"
 
-                current_saved = str(row["status"] or "Offen")
-                if current_saved in ["Teilweise abgefahren", "Abgefahren", "Erledigt"]:
-                    return "Offen"
-                return current_saved
+                # Immer DB-Werte als Ausgangspunkt – keine zufälligen 0-Defaults.
+                if rm_key not in st.session_state:
+                    st.session_state[rm_key] = old_rm
+                if fm_key not in st.session_state:
+                    st.session_state[fm_key] = old_fm
+                if status_key not in st.session_state:
+                    st.session_state[status_key] = str(row["status"] or "Offen")
+                if note_key not in st.session_state:
+                    st.session_state[note_key] = row["interne_notiz"] or ""
+                if lat_key not in st.session_state:
+                    st.session_state[lat_key] = safe_num(row["lat"])
+                if lon_key not in st.session_state:
+                    st.session_state[lon_key] = safe_num(row["lon"])
 
-            def rm_changed():
-                rm_value = safe_num(st.session_state.get(rm_key))
-                st.session_state[fm_key] = round(rm_value / UMR_FACTOR, 3)
-                st.session_state[status_key] = automatic_status(rm_value)
+                def automatic_status(rm_value):
+                    rm_value = safe_num(rm_value)
+                    if rm_value <= EPS:
+                        return "Abgefahren"
+                    if original_rm > 0 and rm_value < original_rm - EPS:
+                        return "Teilweise abgefahren"
 
-            def fm_changed():
-                fm_value = safe_num(st.session_state.get(fm_key))
-                rm_value = round(fm_value * UMR_FACTOR, 3)
-                st.session_state[rm_key] = rm_value
-                st.session_state[status_key] = automatic_status(rm_value)
+                    current_saved = str(row["status"] or "Offen")
+                    if current_saved in ["Teilweise abgefahren", "Abgefahren", "Erledigt"]:
+                        return "Offen"
+                    return current_saved
 
-            st.caption(
-                "Umrechnung: 1,5 RM = 1 FM. Wenn du RM oder FM änderst, wird der andere "
-                "Wert sofort vorgerechnet. Dauerhaft übernommen wird erst mit „Speichern“."
-            )
+                def rm_changed():
+                    rm_value = safe_num(st.session_state.get(rm_key))
+                    st.session_state[fm_key] = round(rm_value / UMR_FACTOR, 3)
+                    st.session_state[status_key] = automatic_status(rm_value)
 
-            st.number_input(
-                "Menge aktuell (RM)",
-                min_value=0.0,
-                step=0.1,
-                format="%.3f",
-                key=rm_key,
-                on_change=rm_changed
-            )
+                def fm_changed():
+                    fm_value = safe_num(st.session_state.get(fm_key))
+                    rm_value = round(fm_value * UMR_FACTOR, 3)
+                    st.session_state[rm_key] = rm_value
+                    st.session_state[status_key] = automatic_status(rm_value)
 
-            st.number_input(
-                "Festmeter aktuell (FM / EFm)",
-                min_value=0.0,
-                step=0.1,
-                format="%.3f",
-                key=fm_key,
-                on_change=fm_changed
-            )
-
-            st.text_input(
-                "Status (automatisch)",
-                key=status_key,
-                disabled=True
-            )
-
-            st.text_area("Interne Notiz", key=note_key)
-
-            manual_coord_key = f"coord_manual_enabled_{pid}"
-            manual_coord_enabled = st.checkbox(
-                "Koordinaten manuell bearbeiten",
-                key=manual_coord_key,
-                help=(
-                    "Aktivieren und anschließend links auf der Karte auf den Standort klicken. "
-                    "Die Koordinaten werden erst mit „Speichern“ dauerhaft übernommen."
-                )
-            )
-
-            # Falls links auf der Karte ein Punkt für genau diesen Polter gewählt wurde,
-            # die Werte als noch nicht gespeicherte Vorschau in die Eingabefelder übernehmen.
-            if (
-                manual_coord_enabled
-                and st.session_state.get("_manual_coord_pending_pid") == int(pid)
-                and st.session_state.get("_manual_coord_pending_lat") is not None
-                and st.session_state.get("_manual_coord_pending_lon") is not None
-            ):
-                pending_lat = float(st.session_state["_manual_coord_pending_lat"])
-                pending_lon = float(st.session_state["_manual_coord_pending_lon"])
-
-                # Vor den Widgets setzen, damit die neuen Werte sofort sichtbar sind.
-                st.session_state[lat_key] = pending_lat
-                st.session_state[lon_key] = pending_lon
-
-                st.success(
-                    f"📍 Neuer Kartenpunkt vorgemerkt: "
-                    f"{pending_lat:.6f}, {pending_lon:.6f}. "
-                    "Zum Übernehmen bitte auf „Speichern“ klicken."
+                st.caption(
+                    "1,5 RM = 1 FM. Änderungen werden sofort vorgerechnet, "
+                    "dauerhaft aber erst mit „Speichern“ übernommen."
                 )
 
-            st.caption("GPS-Koordinaten:")
-            st.number_input("Breitengrad", format="%.7f", key=lat_key)
-            st.number_input("Längengrad", format="%.7f", key=lon_key)
-
-            rm_preview = safe_num(st.session_state.get(rm_key))
-            fm_preview = safe_num(st.session_state.get(fm_key))
-            status_preview = str(st.session_state.get(status_key, "Offen"))
-
-            if status_preview == "Abgefahren":
-                st.success(
-                    f"Vorschau: {rm_preview:.3f} RM / {fm_preview:.3f} FM · "
-                    "Status wird beim Speichern auf „Abgefahren“ gesetzt."
-                )
-            elif status_preview == "Teilweise abgefahren":
-                st.warning(
-                    f"Vorschau: {rm_preview:.3f} RM / {fm_preview:.3f} FM · "
-                    "Status wird beim Speichern auf „Teilweise abgefahren“ gesetzt."
+                st.number_input(
+                    "Menge aktuell (RM)",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.3f",
+                    key=rm_key,
+                    on_change=rm_changed
                 )
 
-            if st.button("Speichern", type="primary", key=f"save_polter_{pid}"):
-                rm_save = safe_num(st.session_state.get(rm_key))
-                fm_save = safe_num(st.session_state.get(fm_key))
-                status_save = automatic_status(rm_save)
-                note_save = st.session_state.get(note_key, "")
-                lat_save = safe_num(st.session_state.get(lat_key))
-                lon_save = safe_num(st.session_state.get(lon_key))
-
-                update_polter(
-                    pid,
-                    rm_save,
-                    fm_save,
-                    status_save,
-                    note_save,
-                    None if lat_save == 0 else lat_save,
-                    None if lon_save == 0 else lon_save
+                st.number_input(
+                    "Festmeter aktuell (FM / EFm)",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.3f",
+                    key=fm_key,
+                    on_change=fm_changed
                 )
 
-                for k in [rm_key, fm_key, status_key, note_key, lat_key, lon_key]:
-                    st.session_state.pop(k, None)
-                st.session_state.pop(selected_pid_key, None)
+                st.text_input("Status (automatisch)", key=status_key, disabled=True)
+                st.text_area("Interne Notiz", key=note_key)
 
-                # Manuellen Koordinatenmodus nach erfolgreichem Speichern zurücksetzen.
-                st.session_state.pop(f"coord_manual_enabled_{pid}", None)
-                st.session_state.pop("_manual_coord_pending_pid", None)
-                st.session_state.pop("_manual_coord_pending_lat", None)
-                st.session_state.pop("_manual_coord_pending_lon", None)
-                st.session_state.pop("_last_manual_coord_click", None)
+                manual_coord_key = f"coord_manual_enabled_{pid}"
+                old_manual_state = bool(st.session_state.get(manual_coord_key, False))
 
-                st.success(
-                    f"Gespeichert: {rm_save:.3f} RM = {fm_save:.3f} FM · "
-                    f"Status: {status_save}"
+                manual_coord_enabled = st.checkbox(
+                    "Koordinaten manuell bearbeiten",
+                    key=manual_coord_key,
+                    help=(
+                        "Aktivieren, links auf der Karte einmal auf den gewünschten Standort klicken "
+                        "und anschließend speichern."
+                    )
                 )
-                st.rerun()
 
-            a, b, c = st.columns(3)
-            a.metric("Original RM", f"{safe_num(row['menge_rm_original']):,.3f}")
-            b.metric("Aktuell RM", f"{safe_num(row['menge_rm_aktuell']):,.3f}")
-            c.metric("Aktuell FM", f"{safe_num(row['kubatur_fm_aktuell']):,.3f}")
+                # Aktivieren/Deaktivieren des Kartenmodus braucht genau EINEN App-Rerun,
+                # danach bleiben RM/FM-Eingaben innerhalb des Fragments schnell.
+                last_mode_key = f"_manual_mode_last_{pid}"
+                last_mode = st.session_state.get(last_mode_key, old_manual_state)
 
-            if pd.notna(row["lat"]) and pd.notna(row["lon"]):
-                st.link_button(
-                    "📍 Google Maps",
-                    f"https://www.google.com/maps?q={row['lat']},{row['lon']}"
-                )
-            if row.get("map_link"):
-                st.link_button("🗺️ Original-Kartenlink", row["map_link"])
+                if manual_coord_enabled != last_mode:
+                    st.session_state[last_mode_key] = manual_coord_enabled
 
-            with st.expander("Einzelnen Polter löschen"):
-                if st.checkbox("Löschen bestätigen", key=f"conf_{pid}"):
-                    if st.button("Polter endgültig löschen", key=f"del_{pid}"):
-                        delete_one(pid)
-                        st.rerun()
-    else:
-        st.info("Keine offenen oder teilweise abgefahrenen Polter zum Bearbeiten vorhanden.")
+                    if manual_coord_enabled:
+                        st.session_state["_manual_ignore_click_signature"] = (
+                            st.session_state.get("_last_seen_map_click_signature")
+                        )
+                        st.session_state.pop("_manual_last_accepted_signature", None)
+                        st.session_state.pop("_manual_coord_pending_pid", None)
+                        st.session_state.pop("_manual_coord_pending_lat", None)
+                        st.session_state.pop("_manual_coord_pending_lon", None)
+                    else:
+                        st.session_state.pop("_manual_coord_pending_pid", None)
+                        st.session_state.pop("_manual_coord_pending_lat", None)
+                        st.session_state.pop("_manual_coord_pending_lon", None)
+                        st.session_state.pop("_manual_last_accepted_signature", None)
+
+                    st.rerun(scope="app")
+
+                if manual_coord_enabled:
+                    st.info(
+                        "📍 Kartenmodus aktiv: links einmal auf den gewünschten Standort klicken. "
+                        "Der Punkt wird nur vorgemerkt, bis du speicherst."
+                    )
+
+                # Kartenklick-Vorschau übernehmen.
+                if (
+                    manual_coord_enabled
+                    and st.session_state.get("_manual_coord_pending_pid") == int(pid)
+                    and st.session_state.get("_manual_coord_pending_lat") is not None
+                    and st.session_state.get("_manual_coord_pending_lon") is not None
+                ):
+                    pending_lat = float(st.session_state["_manual_coord_pending_lat"])
+                    pending_lon = float(st.session_state["_manual_coord_pending_lon"])
+
+                    # Nur setzen, wenn sich die Werte wirklich geändert haben.
+                    if abs(safe_num(st.session_state.get(lat_key)) - pending_lat) > 1e-9:
+                        st.session_state[lat_key] = pending_lat
+                    if abs(safe_num(st.session_state.get(lon_key)) - pending_lon) > 1e-9:
+                        st.session_state[lon_key] = pending_lon
+
+                    st.success(
+                        f"📍 Vorgemerkt: {pending_lat:.6f}, {pending_lon:.6f} – "
+                        "mit „Speichern“ übernehmen."
+                    )
+
+                st.caption("GPS-Koordinaten:")
+                st.number_input("Breitengrad", format="%.7f", key=lat_key)
+                st.number_input("Längengrad", format="%.7f", key=lon_key)
+
+                rm_preview = safe_num(st.session_state.get(rm_key))
+                fm_preview = safe_num(st.session_state.get(fm_key))
+                status_preview = str(st.session_state.get(status_key, "Offen"))
+
+                if status_preview == "Abgefahren":
+                    st.success(
+                        f"Vorschau: {rm_preview:.3f} RM / {fm_preview:.3f} FM · Abgefahren"
+                    )
+                elif status_preview == "Teilweise abgefahren":
+                    st.warning(
+                        f"Vorschau: {rm_preview:.3f} RM / {fm_preview:.3f} FM · Teilweise abgefahren"
+                    )
+
+                if st.button("Speichern", type="primary", key=f"save_polter_{pid}"):
+                    rm_save = safe_num(st.session_state.get(rm_key))
+                    fm_save = safe_num(st.session_state.get(fm_key))
+                    status_save = automatic_status(rm_save)
+                    note_save = st.session_state.get(note_key, "")
+                    lat_save = safe_num(st.session_state.get(lat_key))
+                    lon_save = safe_num(st.session_state.get(lon_key))
+
+                    update_polter(
+                        pid,
+                        rm_save,
+                        fm_save,
+                        status_save,
+                        note_save,
+                        None if lat_save == 0 else lat_save,
+                        None if lon_save == 0 else lon_save
+                    )
+
+                    # Sämtlichen temporären Zustand dieses Polters entfernen.
+                    for k in [
+                        rm_key, fm_key, status_key, note_key, lat_key, lon_key,
+                        manual_coord_key, last_mode_key
+                    ]:
+                        st.session_state.pop(k, None)
+
+                    st.session_state.pop(selected_pid_key, None)
+                    st.session_state.pop("_manual_coord_pending_pid", None)
+                    st.session_state.pop("_manual_coord_pending_lat", None)
+                    st.session_state.pop("_manual_coord_pending_lon", None)
+                    st.session_state.pop("_manual_last_accepted_signature", None)
+                    st.session_state.pop("_manual_ignore_click_signature", None)
+
+                    st.success(
+                        f"Gespeichert: {rm_save:.3f} RM = {fm_save:.3f} FM · Status: {status_save}"
+                    )
+                    st.rerun(scope="app")
+
+                a, b, c = st.columns(3)
+                a.metric("Original RM", f"{safe_num(row['menge_rm_original']):,.3f}")
+                b.metric("Aktuell RM", f"{safe_num(row['menge_rm_aktuell']):,.3f}")
+                c.metric("Aktuell FM", f"{safe_num(row['kubatur_fm_aktuell']):,.3f}")
+
+                if pd.notna(row["lat"]) and pd.notna(row["lon"]):
+                    st.link_button(
+                        "📍 Google Maps",
+                        f"https://www.google.com/maps?q={row['lat']},{row['lon']}"
+                    )
+                if row.get("map_link"):
+                    st.link_button("🗺️ Original-Kartenlink", row["map_link"])
+
+                with st.expander("Einzelnen Polter löschen"):
+                    if st.checkbox("Löschen bestätigen", key=f"conf_{pid}"):
+                        if st.button("Polter endgültig löschen", key=f"del_{pid}"):
+                            delete_one(pid)
+                            st.rerun(scope="app")
+
+            render_polter_editor(pid, selected_row)
 
 
 st.subheader("4. Bereitstellungen")
