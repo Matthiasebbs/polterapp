@@ -1,6 +1,7 @@
 
 import io
 import re
+import time
 import base64
 from pathlib import Path
 import pdfplumber
@@ -1538,26 +1539,74 @@ else:
 
 with st.container(border=True):
     st.subheader("1. PDFs importieren")
-    uploads = st.file_uploader("Bereitstellungen hier hineinziehen", type=["pdf"], accept_multiple_files=True)
+    uploads = st.file_uploader(
+        "Bereitstellungen hier hineinziehen",
+        type=["pdf"],
+        accept_multiple_files=True
+    )
+
     if uploads and st.button("PDFs einlesen", type="primary"):
-        total = 0
         results = []
+
         for f in uploads:
             rows, fmt, attempts = parse_pdf_bytes(f.getvalue(), f.name)
-            if rows:
-                added = save_rows(rows)
-                total += added
-                results.append((f.name, fmt, len(rows), added, "OK"))
+
+            if not rows:
+                results.append({
+                    "filename": f.name,
+                    "state": "error",
+                    "message": "PDF konnte nicht eingelesen werden."
+                })
+                continue
+
+            added = save_rows(rows)
+
+            if added == 0:
+                results.append({
+                    "filename": f.name,
+                    "state": "duplicate",
+                    "message": "PDF schon hochgeladen."
+                })
             else:
-                results.append((f.name, "nicht erkannt", 0, 0, "FEHLER"))
-        if total:
-            st.success(f"{total} neue Polter gespeichert.")
-        for filename, fmt, found, added, state in results:
-            if state == "OK":
-                st.info(f"✅ {filename}: {fmt} erkannt – {found} Polter gelesen, {added} neu gespeichert.")
-            else:
-                st.error(f"❌ {filename}: Format noch nicht erkannt.")
+                results.append({
+                    "filename": f.name,
+                    "state": "success",
+                    "message": "PDF erfolgreich eingelesen."
+                })
+
+        st.session_state["_pdf_import_feedback"] = results
+        st.session_state["_pdf_import_feedback_ts"] = time.time()
         st.rerun()
+
+    feedback = st.session_state.get("_pdf_import_feedback", [])
+    feedback_ts = st.session_state.get("_pdf_import_feedback_ts")
+
+    if feedback and feedback_ts is not None:
+        age = time.time() - float(feedback_ts)
+
+        if age <= 3.0:
+            for item in feedback:
+                filename = item["filename"]
+                state = item["state"]
+                message = item["message"]
+
+                if state == "success":
+                    st.toast(f"{message} — {filename}", icon="✅")
+                    st.success(f"✅ **{message}** — {filename}")
+                elif state == "duplicate":
+                    st.toast(f"{message} — {filename}", icon="ℹ️")
+                    st.warning(f"ℹ️ **{message}** — {filename}")
+                else:
+                    st.toast(f"{message} — {filename}", icon="❌")
+                    st.error(f"❌ **{message}** — {filename}")
+
+            time.sleep(max(0.0, 3.0 - age))
+            st.session_state.pop("_pdf_import_feedback", None)
+            st.session_state.pop("_pdf_import_feedback_ts", None)
+            st.rerun()
+        else:
+            st.session_state.pop("_pdf_import_feedback", None)
+            st.session_state.pop("_pdf_import_feedback_ts", None)
 
     st.markdown("---")
     st.subheader("Private Bauernpartien")
