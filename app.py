@@ -1514,9 +1514,74 @@ if length_choice:
 
 if search.strip():
     q = search.lower()
+
+    # Erst in ALLEN Daten suchen, damit bereits abgefahrene Polter erkannt werden,
+    # auch wenn sie in der aktuellen Karten-/Statusansicht nicht mehr sichtbar sind.
+    full_search_mask = pd.Series(False, index=df.index)
+    for c in [
+        "bereitstellung","lieferant","fraechter","holzliste","hab","los",
+        "polter_nr","lagerort","waldort","bemerkung"
+    ]:
+        full_search_mask |= (
+            df[c]
+            .fillna("")
+            .astype(str)
+            .str.lower()
+            .str.contains(q, regex=False)
+        )
+
+    full_search_hits = df[full_search_mask].copy()
+    if not full_search_hits.empty:
+        full_search_hits["abfuhrstatus"] = full_search_hits.apply(
+            berechne_abfuhrstatus,
+            axis=1
+        )
+
+        abgefahren_hits = full_search_hits[
+            full_search_hits["abfuhrstatus"] == "Abgefahren"
+        ].copy()
+
+        # Nur anzeigen, wenn die Suche tatsächlich mindestens einen abgefahrenen
+        # Polter trifft. So wird der Hinweis nicht bei jeder Eingabe eingeblendet.
+        if not abgefahren_hits.empty:
+            # Kompakte, eindeutige Bezeichnungen für bis zu 3 Treffer.
+            names = []
+            for _, rr in abgefahren_hits.head(3).iterrows():
+                parts = [
+                    str(rr.get("bereitstellung") or "").strip(),
+                    str(rr.get("holzliste") or "").strip(),
+                    str(rr.get("los") or "").strip(),
+                    str(rr.get("polter_nr") or "").strip(),
+                ]
+                parts = [p for p in parts if p]
+                names.append(" / ".join(parts))
+
+            suffix = ""
+            if len(abgefahren_hits) > 3:
+                suffix = f" (+{len(abgefahren_hits) - 3} weitere)"
+
+            st.toast(
+                "Bereits abgefahren: " + " | ".join(names) + suffix,
+                icon="✅"
+            )
+            st.warning(
+                "Die Schnellsuche trifft auf mindestens einen Polter, der bereits "
+                "vollständig abgefahren wurde."
+            )
+
+    # Danach wie bisher die sichtbare Ansicht filtern.
     mask = pd.Series(False, index=view.index)
-    for c in ["bereitstellung","lieferant","fraechter","holzliste","hab","los","polter_nr","lagerort","waldort","bemerkung"]:
-        mask |= view[c].fillna("").astype(str).str.lower().str.contains(q, regex=False)
+    for c in [
+        "bereitstellung","lieferant","fraechter","holzliste","hab","los",
+        "polter_nr","lagerort","waldort","bemerkung"
+    ]:
+        mask |= (
+            view[c]
+            .fillna("")
+            .astype(str)
+            .str.lower()
+            .str.contains(q, regex=False)
+        )
     view = view[mask]
 
 # Oben getrennte Kennzahlen für aktive und bereits abgefahrene Polter.
