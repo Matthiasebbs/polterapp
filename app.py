@@ -67,43 +67,101 @@ def line_value(text, label):
     return m.group(1).strip() if m else ""
 
 def parse_wbv_wasserburg(pages, filename):
+    """
+    Robuster Parser für Bereitstellungen der WBV Holzhandels GmbH / Wasserburg.
+
+    Unterstützt insbesondere unterschiedliche Sortimentsschreibweisen wie:
+      FI IS 3,00 m
+      FI IS N 3,00 m
+      FI IS N 4,00 m
+
+    Jeder Eintrag aus Holzliste / Los / Polter bleibt ein eigener Polter.
+    """
     text = "\n".join(pages)
     if "WBV Holzhandels GmbH" not in text:
         return []
+
     nr = re.search(r"Bereitstellung\s+Nr\.\s*([A-Z0-9\-]+)", text, re.I)
     if not nr:
         return []
-    date = re.search(r"(?:Lief/Leist-Dat|Belegdatum)\s+(\d{2}\.\d{2}\.\d{4})", text)
+
+    date = re.search(
+        r"(?:Lief/Leist-Dat|Belegdatum)\s+(\d{2}\.\d{2}\.\d{4})",
+        text
+    )
     contract = re.search(r"Vertr\.-Nr\.\s*(.+)", text)
 
+    # Beispiel:
+    # 2605170/1/1 FI IS N 3,00 m 30,528 RM 21,370 FM
+    #
+    # Nach der Holzart dürfen ein oder mehrere Sortimentsbestandteile stehen.
+    # Die Länge ist der eindeutige Abschluss des Sortimentsblocks.
     pat = re.compile(
-        r"(?m)^(\d{6,9}/\d+/\d+)\s+([A-Za-zÄÖÜäöü]+)\s+([A-Za-z0-9]+)\s+"
-        r"([\d,]+)\s*m\s+([\d,]+)\s*RM\s+([\d,]+)\s*FM"
+        r"(?m)^"
+        r"(?P<key>\d{6,9}/\d+/\d+)\s+"
+        r"(?P<holzart>[A-Za-zÄÖÜäöüß]+)\s+"
+        r"(?P<sortiment>.+?)\s+"
+        r"(?P<laenge>[\d,]+)\s*m\s+"
+        r"(?P<rm>[\d,]+)\s*RM\s+"
+        r"(?P<fm>[\d,]+)\s*FM\s*$"
     )
+
     mm = list(pat.finditer(text))
     rows = []
+
     for i, m in enumerate(mm):
-        seg = text[m.start():(mm[i+1].start() if i+1 < len(mm) else len(text))]
-        gps = re.search(r"(\d{1,2}\.\d{4,8})°?\s*N,\s*(\d{1,3}\.\d{4,8})°?\s*E", seg)
-        p = m.group(1).split("/")
+        seg = text[
+            m.start():
+            (mm[i + 1].start() if i + 1 < len(mm) else len(text))
+        ]
+
+        gps = re.search(
+            r"(\d{1,2}\.\d{4,8})°?\s*N,\s*"
+            r"(\d{1,3}\.\d{4,8})°?\s*E",
+            seg
+        )
+
+        key_parts = m.group("key").split("/")
+        holzliste_nr, los_nr, polter_nr = key_parts
+
+        sortiment = re.sub(r"\s+", " ", m.group("sortiment")).strip()
+
         r = empty(filename)
         r.update(
-            bereitstellung=nr.group(1), lieferant="WBV Holzhandels GmbH",
+            bereitstellung=nr.group(1),
+            lieferant="WBV Holzhandels GmbH",
             vertragsnummer=contract.group(1).strip() if contract else "",
             datum=date.group(1) if date else "",
-            holzliste=m.group(1), los=p[1], polter_nr=p[2],
-            holzart=m.group(2), sortiment=m.group(3), laenge_m=n(m.group(4)),
+
+            # Für eindeutige Polterzuordnung separat speichern.
+            holzliste=holzliste_nr,
+            los=los_nr,
+            polter_nr=polter_nr,
+
+            holzart=m.group("holzart").strip(),
+            sortiment=sortiment,
+            laenge_m=n(m.group("laenge")),
             einheit="RM / FM",
+
             lat=float(gps.group(1)) if gps else None,
             lon=float(gps.group(2)) if gps else None,
+
             waldort=line_value(seg, "Waldort"),
             lagerort=line_value(seg, "Lagerort"),
             bemerkung=line_value(seg, "Bemerkung"),
             ansprechpartner=line_value(seg, "Ansprechpartner"),
             zertifikat=line_value(seg, "Zertifikat")
         )
-        qty(r, n(m.group(5)), n(m.group(6)))
+
+        # Wie bisher wird die RM-Menge als gelesener Ausgangswert verwendet.
+        # qty() übernimmt die vorhandene Mengenlogik der App.
+        qty(
+            r,
+            n(m.group("rm")),
+            n(m.group("fm"))
+        )
         rows.append(r)
+
     return rows
 
 def parse_muenchen(pages, filename):
