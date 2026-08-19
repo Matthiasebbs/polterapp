@@ -970,6 +970,17 @@ div[data-testid="stExpander"]:has(.bereitstellungen-marker) summary p {
 div[data-testid="stExpander"]:has(.bereitstellungen-marker) summary svg {
     color: #315C46 !important;
 }
+
+/* Private Bauernpartie – Dialog im bestehenden Forststil */
+div[role="dialog"] {
+    border-radius: 14px !important;
+}
+div[role="dialog"] div[data-testid="stTextInput"] input,
+div[role="dialog"] div[data-testid="stNumberInput"] input,
+div[role="dialog"] div[data-testid="stTextArea"] textarea {
+    background: #F3F7F1 !important;
+    border-color: rgba(49,92,70,.20) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1222,6 +1233,280 @@ def berechne_abfuhrstatus(row):
         return "Teilweise abgefahren"
     return "Nicht abgefahren"
 
+
+# ============================================================
+# PRIVATE BAUERNPARTIEN / MANUELLE BEREITSTELLUNG
+# ============================================================
+
+PRIVATE_SOURCE = "Manuell erstellt · Private Bauernpartie"
+
+
+def private_supplier_code(supplier):
+    """
+    Erste 4 Buchstaben des Lieferanten, in Großbuchstaben.
+    Leerzeichen, Zahlen und Sonderzeichen werden für den Code ignoriert.
+    Beispiel: "Huber Franz" -> HUBE
+    """
+    clean = "".join(ch for ch in str(supplier).strip() if ch.isalpha())
+    return clean[:4].upper()
+
+
+def next_private_polter_number(supplier):
+    """
+    Je Lieferant eigener Nummernkreis:
+      HUBE1, HUBE2, HUBE3 ...
+      MAIE1, MAIE2 ...
+    """
+    code = private_supplier_code(supplier)
+    if len(code) < 4:
+        return ""
+
+    existing = df_all()
+    highest = 0
+
+    if not existing.empty:
+        mask = (
+            existing["lieferant"].fillna("").astype(str).str.strip().str.casefold()
+            == str(supplier).strip().casefold()
+        )
+        if "quelle_datei" in existing.columns:
+            mask &= (
+                existing["quelle_datei"]
+                .fillna("")
+                .astype(str)
+                .eq(PRIVATE_SOURCE)
+            )
+
+        for value in existing.loc[mask, "polter_nr"].fillna("").astype(str):
+            m = re.fullmatch(rf"{re.escape(code)}(\d+)", value.strip(), re.I)
+            if m:
+                highest = max(highest, int(m.group(1)))
+
+    return f"{code}{highest + 1}"
+
+
+def private_map_center():
+    """Sinnvoller Kartenstart anhand bereits vorhandener Polter."""
+    existing = df_all()
+    if not existing.empty:
+        pts = existing.dropna(subset=["lat", "lon"]).copy()
+        if not pts.empty:
+            return [float(pts["lat"].mean()), float(pts["lon"].mean())], 9
+    return [48.2, 11.5], 7
+
+
+def clear_private_dialog_state():
+    keys = [
+        "private_supplier", "private_carrier", "private_rm", "private_fm",
+        "private_note", "private_lat", "private_lon",
+        "_private_last_map_click"
+    ]
+    for key in keys:
+        st.session_state.pop(key, None)
+
+
+@st.dialog("Private Bereitstellung erstellen", width="large")
+def private_bereitstellung_dialog():
+    st.markdown(
+        """
+        <div style="
+            background:#EEF4EA;
+            border-left:4px solid #315C46;
+            border-radius:9px;
+            padding:.7rem .85rem;
+            margin-bottom:.8rem;
+            color:#294735;
+        ">
+            <b>Private Bauernpartie</b><br>
+            Lieferant und Mengen eingeben, anschließend den Lagerplatz direkt auf der Karte markieren.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    supplier = st.text_input(
+        "Lieferant",
+        key="private_supplier",
+        placeholder="z. B. Huber Franz"
+    )
+
+    polter_nr = next_private_polter_number(supplier) if supplier.strip() else ""
+    if supplier.strip() and len(private_supplier_code(supplier)) < 4:
+        st.warning("Der Lieferantenname muss mindestens 4 Buchstaben enthalten.")
+
+    st.text_input(
+        "Polternummer",
+        value=polter_nr,
+        disabled=True,
+        help="Wird automatisch aus den ersten 4 Buchstaben des Lieferanten und einer fortlaufenden Nummer erzeugt."
+    )
+
+    carrier = st.text_input(
+        "Frächter",
+        key="private_carrier",
+        placeholder="Frächter eingeben"
+    )
+
+    # ---------------- Mengen ----------------
+    if "private_rm" not in st.session_state:
+        st.session_state["private_rm"] = 0.0
+    if "private_fm" not in st.session_state:
+        st.session_state["private_fm"] = 0.0
+
+    def private_rm_changed():
+        rm = float(st.session_state.get("private_rm", 0.0) or 0.0)
+        st.session_state["private_fm"] = round(rm / 1.5, 3)
+
+    def private_fm_changed():
+        fm = float(st.session_state.get("private_fm", 0.0) or 0.0)
+        st.session_state["private_rm"] = round(fm * 1.5, 3)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.number_input(
+            "Menge RM",
+            min_value=0.0,
+            step=0.1,
+            format="%.3f",
+            key="private_rm",
+            on_change=private_rm_changed
+        )
+    with c2:
+        st.number_input(
+            "Menge FM",
+            min_value=0.0,
+            step=0.1,
+            format="%.3f",
+            key="private_fm",
+            on_change=private_fm_changed
+        )
+
+    st.caption("Umrechnung wie in der gesamten App: **1,5 RM = 1 FM**.")
+
+    note = st.text_area(
+        "Notiz",
+        key="private_note",
+        placeholder="Optionale Notiz zur Bauernpartie …"
+    )
+
+    # ---------------- Standort ----------------
+    st.markdown("#### 📍 Standort")
+    st.caption("Klicke einmal auf den Lagerplatz in der Karte.")
+
+    center, zoom = private_map_center()
+
+    selected_lat = st.session_state.get("private_lat")
+    selected_lon = st.session_state.get("private_lon")
+
+    # Wenn bereits ein Punkt gewählt wurde, Karte dort zentrieren.
+    if selected_lat is not None and selected_lon is not None:
+        center = [float(selected_lat), float(selected_lon)]
+        zoom = 14
+
+    private_map = folium.Map(
+        location=center,
+        zoom_start=zoom,
+        tiles="OpenStreetMap"
+    )
+
+    if selected_lat is not None and selected_lon is not None:
+        folium.Marker(
+            [float(selected_lat), float(selected_lon)],
+            tooltip="Gewählter Standort",
+            icon=folium.DivIcon(
+                html=polter_pin_html("#315C46", size=42),
+                icon_size=(42, 51),
+                icon_anchor=(21, 51),
+                class_name="polter-div-icon"
+            )
+        ).add_to(private_map)
+
+    private_map_state = st_folium(
+        private_map,
+        use_container_width=True,
+        height=390,
+        key="private_bauernpartie_map",
+        returned_objects=["last_clicked"]
+    )
+
+    if isinstance(private_map_state, dict):
+        click = private_map_state.get("last_clicked")
+        if isinstance(click, dict):
+            lat = click.get("lat")
+            lng = click.get("lng")
+            if lat is not None and lng is not None:
+                signature = f"{float(lat):.7f}|{float(lng):.7f}"
+                if signature != st.session_state.get("_private_last_map_click"):
+                    st.session_state["_private_last_map_click"] = signature
+                    st.session_state["private_lat"] = float(lat)
+                    st.session_state["private_lon"] = float(lng)
+                    # Dialog neu zeichnen, damit der Marker sofort sichtbar wird.
+                    st.rerun(scope="fragment")
+
+    selected_lat = st.session_state.get("private_lat")
+    selected_lon = st.session_state.get("private_lon")
+
+    if selected_lat is not None and selected_lon is not None:
+        st.success(
+            f"Standort gewählt: {float(selected_lat):.6f}, {float(selected_lon):.6f}"
+        )
+    else:
+        st.info("Noch kein Standort gewählt.")
+
+    # ---------------- Speichern ----------------
+    st.markdown("---")
+    can_save = (
+        len(private_supplier_code(supplier)) >= 4
+        and bool(polter_nr)
+        and float(st.session_state.get("private_rm", 0.0) or 0.0) > 0
+        and selected_lat is not None
+        and selected_lon is not None
+    )
+
+    if st.button(
+        "🌲 Private Bereitstellung speichern",
+        type="primary",
+        use_container_width=True,
+        disabled=not can_save
+    ):
+        # Nummer direkt vor dem Speichern noch einmal frisch bestimmen.
+        final_polter_nr = next_private_polter_number(supplier)
+
+        rm_value = float(st.session_state.get("private_rm", 0.0) or 0.0)
+        fm_value = round(rm_value / 1.5, 3)
+
+        row = empty(PRIVATE_SOURCE)
+        row.update(
+            bereitstellung=f"Privat · {supplier.strip()}",
+            lieferant=supplier.strip(),
+            fraechter=carrier.strip() or "Nicht angegeben",
+            holzliste="Privat",
+            hab="",
+            los="",
+            polter_nr=final_polter_nr,
+            einheit="RM / FM",
+            lat=float(selected_lat),
+            lon=float(selected_lon),
+            bemerkung=note.strip(),
+            lagerort="Manuell gesetzter Standort"
+        )
+
+        # RM ist die gemeinsame Mengenbasis; FM wird mit Faktor 1,5 berechnet.
+        qty(row, rm=rm_value, fm=None)
+
+        added = save_rows([row])
+
+        if added == 1:
+            st.success(f"Polter {final_polter_nr} wurde gespeichert.")
+            clear_private_dialog_state()
+            st.rerun()
+        else:
+            st.error(
+                "Der Polter konnte nicht gespeichert werden. "
+                "Bitte die Eingaben prüfen und erneut versuchen."
+            )
+
+
 st.title("🪵 Polter-Zentrale")
 st.markdown("""
 <div class="forest-header">
@@ -1262,6 +1547,16 @@ with st.container(border=True):
             else:
                 st.error(f"❌ {filename}: Format noch nicht erkannt.")
         st.rerun()
+
+    st.markdown("---")
+    st.markdown("**Private Bauernpartien**")
+    st.caption("Eigene Bereitstellung ohne PDF direkt in der App anlegen.")
+    if st.button(
+        "＋ Private Bereitstellung erstellen",
+        key="open_private_bereitstellung",
+        use_container_width=False
+    ):
+        private_bereitstellung_dialog()
 
 df = df_all()
 
