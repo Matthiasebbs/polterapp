@@ -1549,7 +1549,7 @@ with st.container(border=True):
         st.rerun()
 
     st.markdown("---")
-    st.markdown("**Private Bauernpartien**")
+    st.subheader("Private Bauernpartien")
     st.caption("Eigene Bereitstellung ohne PDF direkt in der App anlegen.")
     if st.button(
         "＋ Private Bereitstellung erstellen",
