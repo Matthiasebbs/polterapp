@@ -298,33 +298,50 @@ def parse_fbg_isar_lech(pages, filename):
     """
     Robuster Parser für FBG Isar-Lech / Bereitstellung BA-...
 
-    Wichtig:
-    - Jeder Polter bleibt separat.
-    - Zusammengefasst wird NUR, wenn Liste + Los + Polternummer identisch sind.
-    - GPS-Koordinaten können in diesen PDFs VOR der jeweiligen Polterzeile stehen.
-    - Polternummern mit Punkt (z. B. 1.062) werden unterstützt.
-    - RM- und FM-Zeilen werden unterstützt.
-    - Faktor der App: 1,5 RM = 1 FM.
+    Unterstützt verschiedene FBG-Ausgaben, u. a.:
+      - 18,700 Rm m.R. 9,350
+      - 9,4 Rm m.R. 6,11 Fm
+      - reine FM-Zeilen
+      - GPS in eigener Zeile direkt VOR oder NACH der Polterzeile
+      - Polternummern mit Punkt
+      - mehrere Positionen desselben Polters
+
+    Zusammengefasst wird NUR bei identischer Kombination:
+    Liste + Los + Polternummer.
     """
     first = pages[0] if pages else ""
-    if "Bereitstellung BA-" not in first or "GPS-N GPS-O" not in first:
+    if "Bereitstellung BA-" not in first:
         return []
 
     nr = re.search(r"Bereitstellung\s+(BA-\d+)", first, re.I)
     if not nr:
         return []
 
-    date = re.search(r"ausgegeben am:\s*([^\n]+)", first, re.I)
+    # Neue und ältere FBG-Layouts unterstützen.
+    date = (
+        re.search(r"ausgegeben am:\s*([^\n]+)", first, re.I)
+        or re.search(r"Datum:\s*(\d{2}\.\d{2}\.\d{4})", first, re.I)
+    )
+
+    # Vertrag kann im PDF durch die Textextraktion auf zwei Zeilen getrennt sein.
     contract = re.search(r"Vertrag:\s*([^\n]+)", first, re.I)
-    ap = re.search(r"Ihr Ansprechpartner:\s*([^\n]+)", first, re.I)
+    if contract and not contract.group(1).strip():
+        contract = None
+
+    ap = (
+        re.search(r"Ihr Ansprechpartner:\s*([^\n]+)", first, re.I)
+        or re.search(r"Ansprechpartner:\s*([^\n]+)", first, re.I)
+    )
     revier = re.search(r"Revier:\s*([^\n]+)", first, re.I)
 
     lines = [re.sub(r"\s+", " ", x.strip()) for x in first.splitlines() if x.strip()]
 
-    # Beispielzeilen:
+    # Beispiele:
     # 260751 861 1.062 Er-IL-K-4.0 18,700 Rm m.R. 9,350
     # 260403 521 308 Bu-L-B-3.4-41.0 1 0,427 Fm o.R. 0,427
-    # 261504 861 407 Wei-BR-oa-3.0 0 1,360 Rm m.R. 0,816
+    # 263251 166 808 Fi-XK-FK-2.0 0 9,4 Rm m.R. 6,11 Fm
+    #
+    # Der zweite Mengenwert kann am Ende optional nochmals "Fm" tragen.
     row_re = re.compile(
         r"^(?P<liste>\d+)\s+"
         r"(?P<los>\d+)\s+"
@@ -332,16 +349,17 @@ def parse_fbg_isar_lech(pages, filename):
         r"(?P<sort>[A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß0-9.]+)+)\s+"
         r"(?:(?P<stck>\d+)\s+)?"
         r"(?P<menge>\d+(?:,\d+)?)\s+"
-        r"(?P<unit>Rm|Fm)\s*(?:m\.R\.|o\.R\.)?\s+"
-        r"(?P<kubatur>\d+(?:,\d+)?)"
+        r"(?P<unit>Rm|Fm)\s*"
+        r"(?:(?:m\.R\.|o\.R\.)\s*)?"
+        # Ältere FBG-Ausgaben enden direkt nach "Rm m.R.".
+        # Neuere Ausgaben enthalten zusätzlich z. B. "6,11 Fm".
+        r"(?:(?P<kubatur>\d+(?:,\d+)?)(?:\s*Fm)?)?"
         r"(?:\s+(?P<lat>\d{1,2},\d{5,8}))?"
         r"(?:\s+(?P<lon>\d{1,3},\d{5,8}))?"
         r"$",
         re.I
     )
 
-    # In den aktuellen FBG-PDFs stehen GPS-N und GPS-O häufig in EINER
-    # eigenen Zeile direkt VOR dem dazugehörigen Polter.
     gps_pair_re = re.compile(
         r"^(?P<lat>\d{1,2},\d{5,8})\s+(?P<lon>\d{1,3},\d{5,8})$"
     )
@@ -361,17 +379,15 @@ def parse_fbg_isar_lech(pages, filename):
 
         d = m.groupdict()
 
-        # 1. Inline-GPS bevorzugen.
         lat = n(d.get("lat"))
         lon = n(d.get("lon"))
 
-        # 2. Sonst die unmittelbar vorher gelesene GPS-Zeile verwenden.
+        # GPS-Zeile direkt vor der Polterzeile.
         if (lat is None or lon is None) and pending_gps is not None:
             lat = pending_gps[0] if lat is None else lat
             lon = pending_gps[1] if lon is None else lon
 
-        # 3. Fallback: Falls ein anderes FBG-Exportformat GPS erst NACH
-        #    der Polterzeile schreibt, die nächsten wenigen Zeilen prüfen.
+        # Fallback: GPS-Zeile unmittelbar nach der Polterzeile.
         if lat is None or lon is None:
             for nxt in lines[idx + 1: idx + 5]:
                 gp = gps_pair_re.match(nxt)
@@ -380,13 +396,13 @@ def parse_fbg_isar_lech(pages, filename):
                     lon = n(gp.group("lon")) if lon is None else lon
                     break
 
-        # GPS gehört nur zu dieser einen Polterzeile.
         pending_gps = None
 
         amount = n(d["menge"])
         unit = d["unit"].lower()
 
-        # Pro Positionszeile NUR die angegebene Einheit als Basis nehmen.
+        # App-Regel: nur EINE Mengenbasis aus dem PDF verwenden.
+        # 1,5 RM = 1 FM.
         if unit == "rm":
             rm_val = amount
             fm_val = round(float(amount) / 1.5, 3) if amount is not None else None
@@ -397,8 +413,6 @@ def parse_fbg_isar_lech(pages, filename):
         sortiment = d["sort"]
         parts = sortiment.split("-")
 
-        # Sortimentlänge bestimmen. Bei z. B. Bu-L-B-3.4-41.0 ist 3.4 m
-        # die Länge; 41.0 ist kein Längenwert.
         laenge = None
         for token in reversed(parts):
             try:
@@ -423,10 +437,9 @@ def parse_fbg_isar_lech(pages, filename):
             "lon": lon,
         })
 
-    # NUR exakt gleiche Kombinationen zusammenfassen:
-    # Liste + Los + Polter müssen ALLE identisch sein.
     grouped = {}
     for rr in raw_rows:
+        # NUR vollständig identische Polter zusammenfassen.
         key = (str(rr["liste"]), str(rr["los"]), str(rr["polter"]))
 
         if key not in grouped:
@@ -444,8 +457,6 @@ def parse_fbg_isar_lech(pages, filename):
         if rr["sortiment"] not in g["sortimente"]:
             g["sortimente"].append(rr["sortiment"])
 
-        # Für einen identischen Polter reicht ein GPS-Punkt; den ersten
-        # vorhandenen beibehalten.
         if g.get("lat") is None and rr.get("lat") is not None:
             g["lat"] = rr["lat"]
         if g.get("lon") is None and rr.get("lon") is not None:
