@@ -1537,6 +1537,66 @@ if SB:
 else:
     st.warning("🧪 Lokaler Testmodus. Für die veröffentlichte Web-App Supabase verbinden.")
 
+# ============================================================
+# MANUELLES BACKUP
+# ============================================================
+with st.container(border=True):
+    st.subheader("💾 Datensicherung")
+    st.caption(
+        "Erstellt auf Knopfdruck eine vollständige Sicherung aller Polterdaten. "
+        "Die ZIP-Datei kannst du direkt auf deinem Firmenlaptop speichern."
+    )
+
+    if st.button("Backup jetzt erstellen", key="create_manual_backup"):
+        backup_df = df_all().copy()
+
+        if backup_df.empty:
+            st.warning("Es sind derzeit keine Polterdaten vorhanden, die gesichert werden können.")
+        else:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+            csv_bytes = backup_df.to_csv(index=False).encode("utf-8-sig")
+            json_bytes = backup_df.where(pd.notna(backup_df), None).to_json(
+                orient="records",
+                force_ascii=False,
+                indent=2
+            ).encode("utf-8")
+
+            info_text = (
+                "Polter-Zentrale Datensicherung\n"
+                f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+                f"Anzahl Polter-Datensätze: {len(backup_df)}\n"
+                "Enthalten: CSV + JSON\n"
+            ).encode("utf-8")
+
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"polter_backup_{timestamp}.csv", csv_bytes)
+                zf.writestr(f"polter_backup_{timestamp}.json", json_bytes)
+                zf.writestr("backup_info.txt", info_text)
+
+            st.session_state["_manual_backup_bytes"] = zip_buffer.getvalue()
+            st.session_state["_manual_backup_name"] = f"Polter_Zentrale_Backup_{timestamp}.zip"
+            st.session_state["_manual_backup_count"] = len(backup_df)
+
+    if st.session_state.get("_manual_backup_bytes"):
+        st.success(
+            f"✅ Backup fertig – {st.session_state.get('_manual_backup_count', 0)} "
+            "Polter-Datensätze wurden gesichert."
+        )
+        st.download_button(
+            "⬇️ Backup auf Firmenlaptop speichern",
+            data=st.session_state["_manual_backup_bytes"],
+            file_name=st.session_state["_manual_backup_name"],
+            mime="application/zip",
+            use_container_width=True,
+            key="download_manual_backup"
+        )
+        st.caption(
+            "Tipp: Speichere die Datei immer im gleichen Ordner, z. B. "
+            "Dokumente → Polter-Zentrale → Backups."
+        )
+
 with st.container(border=True):
     st.subheader("1. PDFs importieren")
     uploads = st.file_uploader(
