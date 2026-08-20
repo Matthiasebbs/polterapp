@@ -994,6 +994,11 @@ div[role="dialog"] div[data-testid="stTextArea"] textarea {
     background: #F3F7F1 !important;
     border-color: rgba(49,92,70,.20) !important;
 }
+
+/* Backup-Schaltfläche rechts oben */
+button[kind="secondary"]:has(div p:nth-child(1)) {
+    border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1520,35 +1525,41 @@ def private_bereitstellung_dialog():
             )
 
 
-st.title("🪵 Polter-Zentrale")
-st.markdown("""
-<div class="forest-header">
-    <div class="forest-header-icon">🌲</div>
-    <div>
-        <div class="forest-header-title">Digitale Polterverwaltung</div>
-        <div class="forest-header-sub">Bereitstellungen · Bestände · Abfuhr · Standorte</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-st.caption("Alle zugesandten Bereitstellungsformate · Lieferanten-/Frächter-/Längenfilter · Mengenänderung · 1,5 RM = 1 FM · Löschen nach Abfuhr")
-
-if SB:
-    st.success("☁️ LIVE: Supabase verbunden – Polter, Mengen, Status und Notizen werden dauerhaft gespeichert.")
-else:
-    st.warning("🧪 Lokaler Testmodus. Für die veröffentlichte Web-App Supabase verbinden.")
 
 # ============================================================
-# MANUELLES BACKUP
+# BACKUP-CENTER
 # ============================================================
-with st.container(border=True):
-    st.subheader("💾 Datensicherung")
-    st.caption(
-        "Erstellt auf Knopfdruck eine vollständige Sicherung aller Polterdaten. "
-        "Die ZIP-Datei kannst du direkt auf deinem Firmenlaptop speichern."
+@st.dialog("💾 Backup-Center", width="large")
+def backup_center():
+    st.markdown(
+        """
+        <div style="
+            background:#EEF4EA;
+            border-left:4px solid #315C46;
+            border-radius:10px;
+            padding:.8rem .9rem;
+            margin-bottom:.9rem;
+            color:#294735;
+        ">
+            <b>Datensicherung der Polter-Zentrale</b><br>
+            Backup erstellen, herunterladen oder einen früheren Datenstand wiederherstellen.
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    if st.button("Backup jetzt erstellen", key="create_manual_backup"):
+    st.subheader("Backup erstellen")
+    st.caption(
+        "Erstellt eine vollständige Sicherung aller Polterdaten als ZIP-Datei "
+        "mit CSV, JSON und einer Info-Datei."
+    )
+
+    if st.button(
+        "💾 Backup jetzt erstellen",
+        key="create_manual_backup_dialog",
+        type="primary",
+        use_container_width=True
+    ):
         backup_df = df_all().copy()
 
         if backup_df.empty:
@@ -1591,155 +1602,189 @@ with st.container(border=True):
             file_name=st.session_state["_manual_backup_name"],
             mime="application/zip",
             use_container_width=True,
-            key="download_manual_backup"
+            key="download_manual_backup_dialog"
         )
         st.caption(
-            "Tipp: Speichere die Datei immer im gleichen Ordner, z. B. "
-            "Dokumente → Polter-Zentrale → Backups."
+            "Empfehlung: Speichere alle Sicherungen im gleichen Ordner, "
+            "z. B. Dokumente → Polter-Zentrale → Backups."
         )
 
     st.markdown("---")
-    with st.expander("♻️ Backup wiederherstellen", expanded=False):
-        st.caption(
-            "Hier kannst du eine zuvor erstellte ZIP-Sicherung hochladen und den damaligen "
-            "Datenstand wiederherstellen."
-        )
+    st.subheader("Backup wiederherstellen")
+    st.caption(
+        "Lade eine zuvor erstellte ZIP-Sicherung hoch. Du kannst nur fehlende "
+        "Daten ergänzen oder den kompletten Datenbestand auf den Sicherungsstand zurücksetzen."
+    )
 
-        restore_file = st.file_uploader(
-            "Backup-ZIP auswählen",
-            type=["zip"],
-            key="restore_backup_zip"
-        )
+    restore_file = st.file_uploader(
+        "Backup-ZIP auswählen",
+        type=["zip"],
+        key="restore_backup_zip_dialog"
+    )
 
-        if restore_file is not None:
-            try:
-                zip_bytes = restore_file.getvalue()
-                with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-                    json_files = [n for n in zf.namelist() if n.lower().endswith(".json")]
+    if restore_file is not None:
+        try:
+            zip_bytes = restore_file.getvalue()
 
-                    if not json_files:
-                        st.error("In dieser ZIP-Datei wurde keine JSON-Sicherung gefunden.")
-                    else:
-                        json_name = json_files[0]
-                        raw_json = zf.read(json_name).decode("utf-8")
-                        restore_df = pd.read_json(io.StringIO(raw_json))
+            with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+                json_files = [n for n in zf.namelist() if n.lower().endswith(".json")]
 
-                        allowed_cols = ["id"] + FIELDS
-                        restore_df = restore_df[
-                            [c for c in restore_df.columns if c in allowed_cols]
-                        ].copy()
+                if not json_files:
+                    st.error("In dieser ZIP-Datei wurde keine JSON-Sicherung gefunden.")
+                    return
 
-                        if "id" in restore_df.columns:
-                            restore_df = restore_df.drop(columns=["id"])
+                raw_json = zf.read(json_files[0]).decode("utf-8")
+                restore_df = pd.read_json(io.StringIO(raw_json))
 
-                        restore_records = restore_df.where(
-                            pd.notna(restore_df), None
-                        ).to_dict(orient="records")
+            allowed_cols = ["id"] + FIELDS
+            restore_df = restore_df[
+                [c for c in restore_df.columns if c in allowed_cols]
+            ].copy()
 
-                        st.success(
-                            f"Backup erkannt: {len(restore_records)} Polter-Datensätze enthalten."
-                        )
+            if "id" in restore_df.columns:
+                restore_df = restore_df.drop(columns=["id"])
 
-                        mode = st.radio(
-                            "Wiederherstellungsmodus",
-                            [
-                                "Nur fehlende Daten ergänzen",
-                                "Kompletten Datenbestand durch Backup ersetzen"
-                            ],
-                            key="restore_mode"
-                        )
+            restore_records = restore_df.where(
+                pd.notna(restore_df), None
+            ).to_dict(orient="records")
 
-                        if mode == "Nur fehlende Daten ergänzen":
-                            st.info(
-                                "Sicherer Modus: Vorhandene Datensätze bleiben bestehen. "
-                                "Es werden nur Polter ergänzt, die aktuell fehlen."
-                            )
-                            confirm = st.checkbox(
-                                "Ich möchte die fehlenden Daten aus diesem Backup ergänzen.",
-                                key="restore_confirm_merge"
-                            )
+            st.success(
+                f"✅ Backup erkannt – {len(restore_records)} Polter-Datensätze enthalten."
+            )
 
-                            if st.button(
-                                "Fehlende Daten wiederherstellen",
-                                disabled=not confirm,
-                                key="restore_merge_button"
-                            ):
-                                added = save_rows(restore_records)
-                                st.success(
-                                    f"✅ Wiederherstellung abgeschlossen. "
-                                    f"{added} fehlende Polter wurden ergänzt."
-                                )
-                                st.rerun()
+            mode = st.radio(
+                "Wiederherstellungsmodus",
+                [
+                    "Nur fehlende Daten ergänzen",
+                    "Kompletten Datenbestand durch Backup ersetzen"
+                ],
+                key="restore_mode_dialog"
+            )
 
-                        else:
-                            st.error(
-                                "Achtung: Dieser Modus löscht den aktuellen Polter-Datenbestand "
-                                "und stellt exakt den Stand aus dem Backup wieder her."
-                            )
-
-                            confirm_text = st.text_input(
-                                'Zur Bestätigung bitte exakt "WIEDERHERSTELLEN" eingeben:',
-                                key="restore_replace_confirm_text"
-                            )
-
-                            if st.button(
-                                "⚠️ Datenbestand vollständig wiederherstellen",
-                                type="primary",
-                                disabled=(confirm_text.strip() != "WIEDERHERSTELLEN"),
-                                key="restore_replace_button"
-                            ):
-                                current_df = df_all()
-
-                                if SB:
-                                    if not current_df.empty:
-                                        ids = [int(x) for x in current_df["id"].dropna().tolist()]
-                                        chunk_size = 200
-                                        for i in range(0, len(ids), chunk_size):
-                                            chunk = ids[i:i + chunk_size]
-                                            SB.table("polter").delete().in_("id", chunk).execute()
-                                else:
-                                    CON.execute("DELETE FROM polter")
-                                    CON.commit()
-
-                                now = datetime.now().isoformat(timespec="seconds")
-                                cleaned = []
-                                for r in restore_records:
-                                    rr = {c: r.get(c) for c in FIELDS}
-                                    if not rr.get("importiert_am"):
-                                        rr["importiert_am"] = now
-                                    rr["geaendert_am"] = rr.get("geaendert_am") or now
-                                    cleaned.append(rr)
-
-                                if SB:
-                                    if cleaned:
-                                        chunk_size = 200
-                                        for i in range(0, len(cleaned), chunk_size):
-                                            SB.table("polter").insert(
-                                                cleaned[i:i + chunk_size]
-                                            ).execute()
-                                else:
-                                    if cleaned:
-                                        vals = [[r.get(c) for c in FIELDS] for r in cleaned]
-                                        CON.executemany(
-                                            f"INSERT INTO polter ({','.join(FIELDS)}) "
-                                            f"VALUES ({','.join(['?'] * len(FIELDS))})",
-                                            vals
-                                        )
-                                        CON.commit()
-
-                                st.success(
-                                    f"✅ Vollständige Wiederherstellung abgeschlossen. "
-                                    f"{len(cleaned)} Polter wurden aus dem Backup eingespielt."
-                                )
-                                st.rerun()
-
-            except zipfile.BadZipFile:
-                st.error("Die hochgeladene Datei ist keine gültige ZIP-Sicherung.")
-            except Exception:
-                st.error(
-                    "Das Backup konnte nicht gelesen oder wiederhergestellt werden. "
-                    "Bitte prüfe, ob es sich um eine Sicherung aus der Polter-Zentrale handelt."
+            if mode == "Nur fehlende Daten ergänzen":
+                st.info(
+                    "Sicherer Modus: Bereits vorhandene Datensätze bleiben unverändert. "
+                    "Nur fehlende Polter werden ergänzt."
                 )
+
+                confirm = st.checkbox(
+                    "Ich möchte die fehlenden Daten aus diesem Backup ergänzen.",
+                    key="restore_confirm_merge_dialog"
+                )
+
+                if st.button(
+                    "♻️ Fehlende Daten wiederherstellen",
+                    disabled=not confirm,
+                    key="restore_merge_button_dialog",
+                    use_container_width=True
+                ):
+                    added = save_rows(restore_records)
+                    st.success(
+                        f"✅ Wiederherstellung abgeschlossen – "
+                        f"{added} fehlende Polter wurden ergänzt."
+                    )
+
+            else:
+                st.error(
+                    "Achtung: Der aktuelle Polter-Datenbestand wird vollständig gelöscht "
+                    "und durch den Stand aus diesem Backup ersetzt."
+                )
+
+                confirm_text = st.text_input(
+                    'Zur Bestätigung exakt "WIEDERHERSTELLEN" eingeben:',
+                    key="restore_replace_confirm_text_dialog"
+                )
+
+                if st.button(
+                    "⚠️ Kompletten Datenbestand wiederherstellen",
+                    type="primary",
+                    disabled=(confirm_text.strip() != "WIEDERHERSTELLEN"),
+                    key="restore_replace_button_dialog",
+                    use_container_width=True
+                ):
+                    current_df = df_all()
+
+                    if SB:
+                        if not current_df.empty:
+                            ids = [int(x) for x in current_df["id"].dropna().tolist()]
+                            chunk_size = 200
+                            for i in range(0, len(ids), chunk_size):
+                                SB.table("polter").delete().in_(
+                                    "id", ids[i:i + chunk_size]
+                                ).execute()
+                    else:
+                        CON.execute("DELETE FROM polter")
+                        CON.commit()
+
+                    now = datetime.now().isoformat(timespec="seconds")
+                    cleaned = []
+
+                    for r in restore_records:
+                        rr = {c: r.get(c) for c in FIELDS}
+                        if not rr.get("importiert_am"):
+                            rr["importiert_am"] = now
+                        rr["geaendert_am"] = rr.get("geaendert_am") or now
+                        cleaned.append(rr)
+
+                    if SB:
+                        chunk_size = 200
+                        for i in range(0, len(cleaned), chunk_size):
+                            SB.table("polter").insert(
+                                cleaned[i:i + chunk_size]
+                            ).execute()
+                    else:
+                        if cleaned:
+                            vals = [[r.get(c) for c in FIELDS] for r in cleaned]
+                            CON.executemany(
+                                f"INSERT INTO polter ({','.join(FIELDS)}) "
+                                f"VALUES ({','.join(['?'] * len(FIELDS))})",
+                                vals
+                            )
+                            CON.commit()
+
+                    st.success(
+                        f"✅ Vollständige Wiederherstellung abgeschlossen – "
+                        f"{len(cleaned)} Polter wurden eingespielt."
+                    )
+
+        except zipfile.BadZipFile:
+            st.error("Die hochgeladene Datei ist keine gültige ZIP-Sicherung.")
+        except Exception:
+            st.error(
+                "Das Backup konnte nicht gelesen oder wiederhergestellt werden. "
+                "Bitte prüfe, ob es aus der Polter-Zentrale stammt."
+            )
+
+
+title_col, backup_col = st.columns([8.5, 1.5], vertical_alignment="center")
+
+with title_col:
+    st.title("🪵 Polter-Zentrale")
+
+with backup_col:
+    if st.button(
+        "💾 Backup",
+        key="open_backup_center",
+        use_container_width=True
+    ):
+        backup_center()
+
+st.markdown("""
+<div class="forest-header">
+    <div class="forest-header-icon">🌲</div>
+    <div>
+        <div class="forest-header-title">Digitale Polterverwaltung</div>
+        <div class="forest-header-sub">Bereitstellungen · Bestände · Abfuhr · Standorte</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.caption("Alle zugesandten Bereitstellungsformate · Lieferanten-/Frächter-/Längenfilter · Mengenänderung · 1,5 RM = 1 FM · Löschen nach Abfuhr")
+
+if SB:
+    st.success("☁️ LIVE: Supabase verbunden – Polter, Mengen, Status und Notizen werden dauerhaft gespeichert.")
+else:
+    st.warning("🧪 Lokaler Testmodus. Für die veröffentlichte Web-App Supabase verbinden.")
 
 with st.container(border=True):
     st.subheader("1. PDFs importieren")
