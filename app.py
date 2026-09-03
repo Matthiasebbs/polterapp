@@ -1236,6 +1236,23 @@ def update_polter(pid, rm, fm, status, note, lat, lon):
         """, (rm,fm,status,note,lat,lon,values["geaendert_am"],int(pid)))
         CON.commit()
 
+def update_polter_coordinates(pid, lat, lon):
+    """Nur GPS-Koordinaten eines Polters aktualisieren."""
+    values = {
+        "lat": float(lat),
+        "lon": float(lon),
+        "geaendert_am": datetime.now().isoformat(timespec="seconds")
+    }
+    if SB:
+        SB.table("polter").update(values).eq("id", int(pid)).execute()
+    else:
+        CON.execute(
+            "UPDATE polter SET lat=?, lon=?, geaendert_am=? WHERE id=?",
+            (values["lat"], values["lon"], values["geaendert_am"], int(pid))
+        )
+        CON.commit()
+
+
 def delete_group(name):
     # IDs zuerst ermitteln, damit zugehörige Abfuhrhistorie ebenfalls entfernt wird.
     current = df_all()
@@ -2658,6 +2675,202 @@ if app_page == "Polter verwalten":
             if raw_click_signature:
                 st.session_state["_last_seen_map_click_signature"] = raw_click_signature
 
+
+    # ----------------------------------------------------------
+    # Bereitstellungen ohne Koordinaten
+    # ----------------------------------------------------------
+    st.markdown("### 📍 Bereitstellungen ohne Koordinaten")
+
+    no_coord = df[
+        df["lat"].isna() | df["lon"].isna()
+    ].copy()
+
+    if no_coord.empty:
+        st.success("✅ Alle Bereitstellungen haben vollständige GPS-Koordinaten.")
+    else:
+        no_coord["abfuhrstatus"] = no_coord.apply(berechne_abfuhrstatus, axis=1)
+
+        no_coord_summary = (
+            no_coord.groupby(
+                ["lieferant", "fraechter", "bereitstellung"],
+                dropna=False
+            )
+            .agg(
+                Polter_ohne_Koordinaten=("id", "count"),
+                RM_aktuell=("menge_rm_aktuell", "sum"),
+                FM_aktuell=("kubatur_fm_aktuell", "sum")
+            )
+            .reset_index()
+            .sort_values(["lieferant", "bereitstellung"], na_position="last")
+        )
+
+        st.caption(
+            "Bereitstellung auswählen und anschließend den fehlenden Poltern "
+            "direkt auf der Karte einen Standort zuweisen."
+        )
+
+        coord_options = {}
+        for _, rr in no_coord_summary.iterrows():
+            label = (
+                f"{rr['lieferant']} · {rr['fraechter'] or '-'} · "
+                f"{rr['bereitstellung']} · {int(rr['Polter_ohne_Koordinaten'])} "
+                f"Polter ohne Koordinaten"
+            )
+            coord_options[label] = (
+                str(rr["lieferant"]),
+                str(rr["fraechter"]),
+                str(rr["bereitstellung"])
+            )
+
+        selected_coord_group = st.selectbox(
+            "Bereitstellung auswählen",
+            list(coord_options.keys()),
+            key="manage_missing_coord_group"
+        )
+        sel_supplier, sel_carrier, sel_bereit = coord_options[selected_coord_group]
+
+        group_missing = no_coord[
+            no_coord["lieferant"].fillna("").astype(str).eq(sel_supplier)
+            & no_coord["fraechter"].fillna("").astype(str).eq(sel_carrier)
+            & no_coord["bereitstellung"].fillna("").astype(str).eq(sel_bereit)
+        ].copy().sort_values("id")
+
+        polter_options = {}
+        for _, rr in group_missing.iterrows():
+            polter_label = (
+                f"Polter {rr['polter_nr'] or '-'}"
+                f" · Liste {rr['holzliste'] or '-'}"
+                f" · Los {rr['los'] or '-'}"
+                f" · {float(rr['menge_rm_aktuell'] or 0):.3f} RM"
+            )
+            polter_options[polter_label] = int(rr["id"])
+
+        selected_missing_polter = st.selectbox(
+            "Polter ohne Koordinaten",
+            list(polter_options.keys()),
+            key="manage_missing_coord_polter"
+        )
+        missing_pid = polter_options[selected_missing_polter]
+
+        st.markdown("#### 📍 Standort auf der Karte auswählen")
+        st.caption(
+            "Klicke auf den tatsächlichen Lagerplatz. Der Standort wird zuerst nur "
+            "vorgemerkt und erst mit „Koordinaten speichern“ übernommen."
+        )
+
+        # Sinnvoller Kartenmittelpunkt: vorhandene Polter derselben Bereitstellung,
+        # sonst alle vorhandenen Polter, sonst neutraler Startpunkt.
+        same_group = df[
+            df["lieferant"].fillna("").astype(str).eq(sel_supplier)
+            & df["fraechter"].fillna("").astype(str).eq(sel_carrier)
+            & df["bereitstellung"].fillna("").astype(str).eq(sel_bereit)
+        ].dropna(subset=["lat", "lon"])
+
+        if not same_group.empty:
+            coord_center = [
+                float(same_group["lat"].mean()),
+                float(same_group["lon"].mean())
+            ]
+            coord_zoom = 13
+        else:
+            all_coord_pts = df.dropna(subset=["lat", "lon"])
+            if not all_coord_pts.empty:
+                coord_center = [
+                    float(all_coord_pts["lat"].mean()),
+                    float(all_coord_pts["lon"].mean())
+                ]
+                coord_zoom = 8
+            else:
+                coord_center = [48.2, 11.5]
+                coord_zoom = 7
+
+        pending_key = f"_manage_coord_pending_{missing_pid}"
+        pending = st.session_state.get(pending_key)
+
+        if isinstance(pending, dict):
+            coord_center = [float(pending["lat"]), float(pending["lon"])]
+            coord_zoom = 14
+
+        coord_map = folium.Map(
+            location=coord_center,
+            zoom_start=coord_zoom,
+            tiles="OpenStreetMap"
+        )
+
+        # Bereits vorhandene Standorte derselben Bereitstellung als Orientierung.
+        for _, rr in same_group.iterrows():
+            folium.Marker(
+                [float(rr["lat"]), float(rr["lon"])],
+                tooltip=f"Bereits gesetzt: Polter {rr['polter_nr'] or '-'}",
+                icon=folium.DivIcon(
+                    html=polter_pin_html(
+                        supplier_color_map.get(str(rr["lieferant"]), "#315C46"),
+                        size=36
+                    ),
+                    icon_size=(36, 44),
+                    icon_anchor=(18, 44),
+                    class_name="polter-div-icon"
+                )
+            ).add_to(coord_map)
+
+        if isinstance(pending, dict):
+            folium.Marker(
+                [float(pending["lat"]), float(pending["lon"])],
+                tooltip="Neuer Standort – noch nicht gespeichert",
+                icon=folium.Icon(icon="map-marker")
+            ).add_to(coord_map)
+
+        coord_map_state = st_folium(
+            coord_map,
+            use_container_width=True,
+            height=480,
+            key=f"manage_missing_coord_map_{missing_pid}",
+            returned_objects=["last_clicked"]
+        )
+
+        if isinstance(coord_map_state, dict):
+            click = coord_map_state.get("last_clicked")
+            if isinstance(click, dict):
+                click_lat = click.get("lat")
+                click_lon = click.get("lng")
+                if click_lat is not None and click_lon is not None:
+                    signature = f"{float(click_lat):.7f}|{float(click_lon):.7f}"
+                    sig_key = f"_manage_coord_click_sig_{missing_pid}"
+                    if signature != st.session_state.get(sig_key):
+                        st.session_state[sig_key] = signature
+                        st.session_state[pending_key] = {
+                            "lat": float(click_lat),
+                            "lon": float(click_lon)
+                        }
+                        st.rerun()
+
+        pending = st.session_state.get(pending_key)
+        if isinstance(pending, dict):
+            st.success(
+                f"📍 Vorgemerkt: {float(pending['lat']):.6f}, "
+                f"{float(pending['lon']):.6f}"
+            )
+
+            if st.button(
+                "Koordinaten speichern",
+                type="primary",
+                key=f"save_manage_coord_{missing_pid}",
+                use_container_width=True
+            ):
+                update_polter_coordinates(
+                    missing_pid,
+                    pending["lat"],
+                    pending["lon"]
+                )
+                st.session_state.pop(pending_key, None)
+                st.session_state.pop(f"_manage_coord_click_sig_{missing_pid}", None)
+                st.success("✅ Koordinaten wurden gespeichert.")
+                st.rerun()
+
+        st.caption(
+            f"Insgesamt fehlen bei {len(no_coord)} Poltern die Koordinaten "
+            f"in {len(no_coord_summary)} Bereitstellungen."
+        )
 
     # ----------------------------------------------------------
     # 4. Bereitstellungen – standardmäßig eingeklappt
