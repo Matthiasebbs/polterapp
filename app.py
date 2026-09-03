@@ -1061,6 +1061,17 @@ def local_db():
         verbucht_am TEXT
     )
     """)
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS abfuhren (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        polter_id INTEGER NOT NULL,
+        abgefahren_rm REAL NOT NULL,
+        abgefahren_fm REAL NOT NULL,
+        rest_rm REAL,
+        rest_fm REAL,
+        gebucht_am TEXT NOT NULL
+    )
+    """)
     cols = {row[1] for row in con.execute("PRAGMA table_info(polter)").fetchall()}
     if "fraechter" not in cols:
         con.execute("ALTER TABLE polter ADD COLUMN fraechter TEXT DEFAULT ''")
@@ -1079,6 +1090,66 @@ def df_all():
         if c not in df:
             df[c] = ""
     return df
+
+
+def df_abfuhren(pid=None):
+    """
+    Abfuhrhistorie laden. Bei Supabase wird die separate Tabelle 'abfuhren'
+    verwendet; lokal die SQLite-Tabelle.
+    """
+    if SB:
+        q = SB.table("abfuhren").select("*").order("gebucht_am", desc=True)
+        if pid is not None:
+            q = q.eq("polter_id", int(pid))
+        data = q.execute().data
+        return pd.DataFrame(data) if data else pd.DataFrame(
+            columns=["id","polter_id","abgefahren_rm","abgefahren_fm","rest_rm","rest_fm","gebucht_am"]
+        )
+
+    if pid is None:
+        return pd.read_sql_query(
+            "SELECT * FROM abfuhren ORDER BY gebucht_am DESC",
+            CON
+        )
+    return pd.read_sql_query(
+        "SELECT * FROM abfuhren WHERE polter_id=? ORDER BY gebucht_am DESC",
+        CON,
+        params=(int(pid),)
+    )
+
+
+def record_abfuhr(pid, abgefahren_rm, abgefahren_fm, rest_rm, rest_fm):
+    """
+    Eine tatsächlich gespeicherte Mengenreduktion als Abfuhr protokollieren.
+    """
+    if float(abgefahren_rm or 0) <= 0.0005:
+        return
+
+    rec = {
+        "polter_id": int(pid),
+        "abgefahren_rm": round(float(abgefahren_rm), 3),
+        "abgefahren_fm": round(float(abgefahren_fm), 3),
+        "rest_rm": round(float(rest_rm), 3),
+        "rest_fm": round(float(rest_fm), 3),
+        "gebucht_am": datetime.now().isoformat(timespec="seconds")
+    }
+
+    if SB:
+        SB.table("abfuhren").insert(rec).execute()
+    else:
+        CON.execute(
+            """
+            INSERT INTO abfuhren
+            (polter_id, abgefahren_rm, abgefahren_fm, rest_rm, rest_fm, gebucht_am)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rec["polter_id"], rec["abgefahren_rm"], rec["abgefahren_fm"],
+                rec["rest_rm"], rec["rest_fm"], rec["gebucht_am"]
+            )
+        )
+        CON.commit()
+
 
 def duplicate(row):
     df = df_all()
@@ -1166,16 +1237,29 @@ def update_polter(pid, rm, fm, status, note, lat, lon):
         CON.commit()
 
 def delete_group(name):
+    # IDs zuerst ermitteln, damit zugehörige Abfuhrhistorie ebenfalls entfernt wird.
+    current = df_all()
+    ids = current.loc[
+        current["bereitstellung"].fillna("").astype(str).eq(str(name)), "id"
+    ].dropna().astype(int).tolist()
+
     if SB:
+        if ids:
+            SB.table("abfuhren").delete().in_("polter_id", ids).execute()
         SB.table("polter").delete().eq("bereitstellung", str(name)).execute()
     else:
+        if ids:
+            placeholders = ",".join(["?"] * len(ids))
+            CON.execute(f"DELETE FROM abfuhren WHERE polter_id IN ({placeholders})", ids)
         CON.execute("DELETE FROM polter WHERE bereitstellung=?", (str(name),))
         CON.commit()
 
 def delete_one(pid):
     if SB:
+        SB.table("abfuhren").delete().eq("polter_id", int(pid)).execute()
         SB.table("polter").delete().eq("id", int(pid)).execute()
     else:
+        CON.execute("DELETE FROM abfuhren WHERE polter_id=?", (int(pid),))
         CON.execute("DELETE FROM polter WHERE id=?", (int(pid),))
         CON.commit()
 
@@ -1578,13 +1662,23 @@ def backup_center():
                 "Polter-Zentrale Datensicherung\n"
                 f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
                 f"Anzahl Polter-Datensätze: {len(backup_df)}\n"
-                "Enthalten: CSV + JSON\n"
+                "Enthalten: Polter + Abfuhrhistorie, jeweils als CSV + JSON\n"
+            ).encode("utf-8")
+
+            abfuhr_df = df_abfuhren()
+            abfuhr_csv = abfuhr_df.to_csv(index=False).encode("utf-8-sig")
+            abfuhr_json = abfuhr_df.where(pd.notna(abfuhr_df), None).to_json(
+                orient="records",
+                force_ascii=False,
+                indent=2
             ).encode("utf-8")
 
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr(f"polter_backup_{timestamp}.csv", csv_bytes)
                 zf.writestr(f"polter_backup_{timestamp}.json", json_bytes)
+                zf.writestr(f"abfuhren_backup_{timestamp}.csv", abfuhr_csv)
+                zf.writestr(f"abfuhren_backup_{timestamp}.json", abfuhr_json)
                 zf.writestr("backup_info.txt", info_text)
 
             st.session_state["_manual_backup_bytes"] = zip_buffer.getvalue()
@@ -2765,6 +2859,19 @@ with right:
                     lat_save = safe_num(st.session_state.get(lat_key))
                     lon_save = safe_num(st.session_state.get(lon_key))
 
+                    # Nur echte Verringerungen als Abfuhr protokollieren.
+                    # Beispiel: 30 RM -> 18 RM = 12 RM Abfuhr.
+                    if rm_save < old_rm - EPS:
+                        abgefahren_rm = round(old_rm - rm_save, 3)
+                        abgefahren_fm = round(abgefahren_rm / UMR_FACTOR, 3)
+                        record_abfuhr(
+                            pid,
+                            abgefahren_rm,
+                            abgefahren_fm,
+                            rm_save,
+                            fm_save
+                        )
+
                     update_polter(
                         pid,
                         rm_save,
@@ -2793,6 +2900,43 @@ with right:
                         f"Gespeichert: {rm_save:.3f} RM = {fm_save:.3f} FM · Status: {status_save}"
                     )
                     st.rerun(scope="app")
+
+                with st.expander("🚚 Abfuhren", expanded=False):
+                    hist = df_abfuhren(pid)
+
+                    if hist.empty:
+                        st.caption("Für diesen Polter wurden bisher keine Abfuhren gebucht.")
+                    else:
+                        hist = hist.copy()
+                        hist["gebucht_am"] = pd.to_datetime(
+                            hist["gebucht_am"], errors="coerce"
+                        )
+                        hist["Datum / Uhrzeit"] = hist["gebucht_am"].dt.strftime(
+                            "%d.%m.%Y %H:%M"
+                        )
+
+                        show_hist = hist[
+                            ["Datum / Uhrzeit", "abgefahren_rm", "abgefahren_fm", "rest_rm", "rest_fm"]
+                        ].copy()
+                        show_hist.columns = [
+                            "Datum / Uhrzeit",
+                            "Abgefahren RM",
+                            "Abgefahren FM",
+                            "Rest RM",
+                            "Rest FM"
+                        ]
+
+                        st.dataframe(
+                            show_hist,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                        st.caption(
+                            f"Gesamt abgefahren: "
+                            f"{hist['abgefahren_rm'].fillna(0).sum():,.3f} RM · "
+                            f"{hist['abgefahren_fm'].fillna(0).sum():,.3f} FM"
+                        )
 
                 a, b, c = st.columns(3)
                 a.metric("Original RM", f"{safe_num(row['menge_rm_original']):,.3f}")
