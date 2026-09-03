@@ -2681,14 +2681,23 @@ if app_page == "Polter verwalten":
     # ----------------------------------------------------------
     st.markdown("### 📍 Bereitstellungen ohne Koordinaten")
 
+    # Nur aktive (noch nicht vollständig abgefahrene) Polter berücksichtigen.
+    # Vollständig abgefahrene Polter/Bereitstellungen werden hier nicht mehr angezeigt.
     no_coord = df[
         df["lat"].isna() | df["lon"].isna()
     ].copy()
 
-    if no_coord.empty:
-        st.success("✅ Alle Bereitstellungen haben vollständige GPS-Koordinaten.")
-    else:
+    if not no_coord.empty:
         no_coord["abfuhrstatus"] = no_coord.apply(berechne_abfuhrstatus, axis=1)
+        no_coord = no_coord[
+            no_coord["abfuhrstatus"] != "Abgefahren"
+        ].copy()
+
+    if no_coord.empty:
+        st.success(
+            "✅ Alle noch nicht abgefahrenen Bereitstellungen haben vollständige GPS-Koordinaten."
+        )
+    else:
 
         no_coord_summary = (
             no_coord.groupby(
@@ -2705,8 +2714,9 @@ if app_page == "Polter verwalten":
         )
 
         st.caption(
-            "Bereitstellung auswählen und anschließend den fehlenden Poltern "
-            "direkt auf der Karte einen Standort zuweisen."
+            "Es werden nur noch nicht vollständig abgefahrene Bereitstellungen angezeigt. "
+            "Bereitstellung auswählen und anschließend den fehlenden Poltern direkt auf der Karte "
+            "einen Standort zuweisen."
         )
 
         coord_options = {}
