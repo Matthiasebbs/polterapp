@@ -98,13 +98,22 @@ def parse_wbv_wasserburg(pages, filename):
     #
     # Nach der Holzart dürfen ein oder mehrere Sortimentsbestandteile stehen.
     # Die Länge ist der eindeutige Abschluss des Sortimentsblocks.
+    # Unterstützt sowohl die bisherigen Nadelholz-Zeilen
+    #   2605170/1/1 FI IS N 3,00 m 30,528 RM 21,370 FM
+    # als auch neue Laubholz-/Einzelstamm-Zeilen wie
+    #   2615024/1/1 ES FL 3,92 m 13 Stk 5,418 FM
+    #
+    # Bei neuen WBV-Belegen kann der RM-Wert im sichtbaren PDF stehen,
+    # aber in der extrahierten Textebene fehlen. Dann wird FM als
+    # Mengenbasis verwendet und RM nach der App-Regel 1,5 RM = 1 FM berechnet.
     pat = re.compile(
         r"(?m)^"
         r"(?P<key>\d{6,9}/\d+/\d+)\s+"
         r"(?P<holzart>[A-Za-zÄÖÜäöüß]+)\s+"
         r"(?P<sortiment>.+?)\s+"
         r"(?P<laenge>[\d,]+)\s*m\s+"
-        r"(?P<rm>[\d,]+)\s*RM\s+"
+        r"(?:(?P<stueck>\d+)\s*Stk\s+)?"
+        r"(?:(?P<rm>[\d,]+)\s*RM\s+)?"
         r"(?P<fm>[\d,]+)\s*FM\s*$"
     )
 
@@ -143,6 +152,7 @@ def parse_wbv_wasserburg(pages, filename):
             holzart=m.group("holzart").strip(),
             sortiment=sortiment,
             laenge_m=n(m.group("laenge")),
+            stueck=int(m.group("stueck")) if m.group("stueck") else None,
             einheit="RM / FM",
 
             lat=float(gps.group(1)) if gps else None,
@@ -155,13 +165,12 @@ def parse_wbv_wasserburg(pages, filename):
             zertifikat=line_value(seg, "Zertifikat")
         )
 
-        # Wie bisher wird die RM-Menge als gelesener Ausgangswert verwendet.
-        # qty() übernimmt die vorhandene Mengenlogik der App.
-        qty(
-            r,
-            n(m.group("rm")),
-            n(m.group("fm"))
-        )
+        # Wenn RM aus der PDF-Textebene lesbar ist, bleibt RM die Mengenbasis.
+        # Fehlt RM (wie bei manchen neuen WBV-Einzelstammbelegen), wird FM
+        # übernommen und RM mit Faktor 1,5 berechnet.
+        rm_value = n(m.group("rm")) if m.group("rm") else None
+        fm_value = n(m.group("fm")) if m.group("fm") else None
+        qty(r, rm=rm_value, fm=fm_value)
         rows.append(r)
 
     return rows
@@ -454,7 +463,12 @@ def parse_fbg_isar_lech(pages, filename):
         g = grouped[key]
         g["rm"] = round(float(g.get("rm") or 0) + float(rr.get("rm") or 0), 3)
         g["fm"] = round(float(g.get("fm") or 0) + float(rr.get("fm") or 0), 3)
-        g["stueck"] = float(g.get("stueck") or 0) + float(rr.get("stueck") or 0)
+        # Stück nur weiterführen, wenn es im Beleg tatsächlich angegeben ist.
+        # Fehlt die Stückzahl in allen Zeilen, bleibt der Wert None statt 0.
+        if g.get("stueck") is None and rr.get("stueck") is None:
+            g["stueck"] = None
+        else:
+            g["stueck"] = float(g.get("stueck") or 0) + float(rr.get("stueck") or 0)
 
         if rr["sortiment"] not in g["sortimente"]:
             g["sortimente"].append(rr["sortiment"])
