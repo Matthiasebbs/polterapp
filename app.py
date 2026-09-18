@@ -251,6 +251,112 @@ def parse_muenchen(pages, filename):
         rows.append(r)
     return rows
 
+
+def parse_wbv_traunstein(pages, filename):
+    """
+    Parser für Bereitstellungen der WBV Traunstein.
+
+    Beispiel:
+      BM-26-0422_Kaindl
+      12345 86281 BAh IL 3.00 1 54,000 FmoR
+             12,497086 47,812653 ...
+
+    Koord X = Längengrad, Koord Y = Breitengrad.
+    FmoR wird als FM-Mengenbasis behandelt; RM wird nach der
+    App-Regel 1 FM = 1,5 RM berechnet.
+    Stück wird nur gespeichert, wenn es im Beleg tatsächlich steht.
+    """
+    first = pages[0] if pages else ""
+    if "WBV Traunstein" not in first or "Polterinformation:" not in first:
+        return []
+
+    nr = (
+        re.search(r"Bereitstellungsnummer:[ \t]*([A-Z0-9_\-]+)", first, re.I)
+        or re.search(r"(?m)^(BM-\d{2}-\d{4}_[A-Za-z0-9_-]+)\s*$", first)
+    )
+    if not nr:
+        return []
+
+    date = re.search(r"Bereitstellungsdatum:\s*(\d{2}\.\d{2}\.\d{4})", first, re.I)
+    contract = re.search(r"Vertrag:\s*([^\n]+)", first, re.I)
+
+    # z. B. B_Hunglinger_50038 -> Hunglinger
+    carrier = ""
+    cm = re.search(r"\bB_([A-Za-zÄÖÜäöüß&.'-]+)_\d+\b", first)
+    if cm:
+        carrier = cm.group(1).strip()
+
+    lines = [re.sub(r"\s+", " ", ln.strip()) for ln in first.splitlines() if ln.strip()]
+
+    # Stück ist optional. So werden zukünftige Belege ohne Stückzahl ebenfalls
+    # korrekt eingelesen, ohne eine künstliche 0 zu erzeugen.
+    row_re = re.compile(
+        r"^(?P<polter>\d+)\s+"
+        r"(?P<hab>\d+)\s+"
+        r"(?P<holzart>[A-Za-zÄÖÜäöüß]+)\s+"
+        r"(?P<sorte>[A-Za-zÄÖÜäöüß0-9.-]+)\s+"
+        r"(?P<laenge>\d+(?:[.,]\d+)?)\s+"
+        r"(?:(?P<stueck>\d+)\s+)?"
+        r"(?P<menge>\d+(?:[.,]\d+)?)\s+"
+        r"(?P<einheit>FmoR|FM|EFm|RM)\s+"
+        r"(?P<lon>\d{1,3}[.,]\d{4,8})\s+"
+        r"(?P<lat>\d{1,2}[.,]\d{4,8})"
+        r"(?:\s+(?P<rest>.*))?$",
+        re.I
+    )
+
+    rows = []
+    for idx, line in enumerate(lines):
+        m = row_re.match(line)
+        if not m:
+            continue
+
+        d = m.groupdict()
+        note_parts = []
+        if d.get("rest"):
+            note_parts.append(d["rest"].strip())
+
+        # Fortsetzungszeilen des Lagerplatz-/Wegezustand-Textes bis zur
+        # nächsten Polterzeile, Summe oder Seitenangabe übernehmen.
+        for nxt in lines[idx + 1:]:
+            if row_re.match(nxt) or nxt.startswith("Summe ") or nxt.startswith("Seite "):
+                break
+            if nxt == "Polter Gesamtübersicht":
+                break
+            note_parts.append(nxt)
+
+        amount = n(d["menge"])
+        unit = d["einheit"]
+
+        r = empty(filename)
+        r.update(
+            bereitstellung=nr.group(1).strip(),
+            lieferant="WBV Traunstein",
+            fraechter=carrier,
+            vertragsnummer=contract.group(1).strip() if contract else "",
+            datum=date.group(1) if date else "",
+            hab=d["hab"],
+            polter_nr=d["polter"],
+            holzart=d["holzart"],
+            sortiment=d["sorte"],
+            laenge_m=n(d["laenge"]),
+            stueck=int(d["stueck"]) if d.get("stueck") else None,
+            einheit=unit,
+            lat=n(d["lat"]),
+            lon=n(d["lon"]),
+            lagerort=" ".join(note_parts).strip()
+        )
+
+        if unit.lower() == "rm":
+            qty(r, rm=amount, fm=None)
+        else:
+            qty(r, rm=None, fm=amount)
+
+        rows.append(r)
+
+    return rows
+
+
 def parse_wbv_altoetting(pages, filename):
     first = pages[0] if pages else ""
     if "WBV Altötting-Burghausen e.V." not in first:
@@ -671,6 +777,7 @@ def extract_fraechter_from_filename(filename):
 PARSERS = [
     ("WBV Wasserburg", parse_wbv_wasserburg),
     ("München / Stadtwerke", parse_muenchen),
+    ("WBV Traunstein", parse_wbv_traunstein),
     ("WBV Altötting-Burghausen", parse_wbv_altoetting),
     ("FBG Isar-Lech", parse_fbg_isar_lech),
     ("Toerring-Jettenbach", parse_toerring),
@@ -692,10 +799,9 @@ def parse_pdf_bytes(data, filename):
         except Exception as e:
             attempts.append((name, 0, str(e)))
     fraechter = extract_fraechter_from_filename(filename)
-    if not fraechter:
-        fraechter = "Nicht angegeben"
     for row in best:
-        row["fraechter"] = fraechter
+        if not str(row.get("fraechter", "") or "").strip():
+            row["fraechter"] = fraechter or "Nicht angegeben"
     return best, best_name, attempts
 
 
