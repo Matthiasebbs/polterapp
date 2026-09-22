@@ -1606,11 +1606,38 @@ def private_bereitstellung_dialog():
     if auto_polter_nr and polter_nr != auto_polter_nr:
         st.caption(f"Automatischer Vorschlag wäre: **{auto_polter_nr}**")
 
-    carrier = st.text_input(
+    # ---------------- Frächter mit Vorschlägen ----------------
+    # Bereits im System vorhandene Frächter als Vorschläge verwenden.
+    # Das Feld bleibt frei beschreibbar: Neue Frächter können weiterhin
+    # einfach eingegeben werden. Beim Tippen filtert Streamlit die Vorschläge
+    # nach dem eingegebenen Text (z. B. "win" -> alle passenden Namen).
+    try:
+        carrier_df = df_all()
+        known_carriers = sorted(
+            {
+                str(x).strip()
+                for x in carrier_df.get("fraechter", pd.Series(dtype=str)).fillna("").tolist()
+                if str(x).strip()
+                and str(x).strip().casefold() != "nicht angegeben"
+            },
+            key=str.casefold
+        )
+    except Exception:
+        known_carriers = []
+
+    carrier = st.selectbox(
         "Frächter",
+        options=known_carriers,
+        index=None,
         key="private_carrier",
-        placeholder="Frächter eingeben"
+        placeholder="Frächter eingeben oder auswählen",
+        accept_new_options=True,
+        help=(
+            "Tippe einen Teil des Namens ein. Die App durchsucht die bereits "
+            "gespeicherten Frächter. Neue Namen können ebenfalls eingegeben werden."
+        )
     )
+    carrier = str(carrier or "").strip()
 
     # ---------------- Mengen ----------------
     if "private_rm" not in st.session_state:
