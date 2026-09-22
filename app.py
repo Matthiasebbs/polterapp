@@ -1537,7 +1537,8 @@ def private_map_center():
 def clear_private_dialog_state():
     keys = [
         "private_supplier", "private_carrier", "private_rm", "private_fm",
-        "private_note", "private_lat", "private_lon",
+        "private_note", "private_lat", "private_lon", "private_polter_nr",
+        "_private_polter_auto", "_private_polter_supplier",
         "_private_last_map_click"
     ]
     for key in keys:
@@ -1569,16 +1570,41 @@ def private_bereitstellung_dialog():
         placeholder="z. B. Huber Franz"
     )
 
-    polter_nr = next_private_polter_number(supplier) if supplier.strip() else ""
+    auto_polter_nr = next_private_polter_number(supplier) if supplier.strip() else ""
     if supplier.strip() and len(private_supplier_code(supplier)) < 4:
         st.warning("Der Lieferantenname muss mindestens 4 Buchstaben enthalten.")
 
-    st.text_input(
+    # Standardmäßig wird die Polternummer automatisch vorgeschlagen.
+    # Sie kann aber jederzeit manuell überschrieben werden.
+    supplier_key = supplier.strip().casefold()
+    previous_supplier = st.session_state.get("_private_polter_supplier", "")
+    previous_auto = st.session_state.get("_private_polter_auto", "")
+
+    if "private_polter_nr" not in st.session_state:
+        st.session_state["private_polter_nr"] = auto_polter_nr
+    elif supplier_key != previous_supplier:
+        # Beim Wechsel des Lieferanten nur dann automatisch neu setzen,
+        # wenn bisher noch der alte automatische Vorschlag verwendet wurde
+        # oder das Feld leer ist. Eine bewusst manuell eingegebene Nummer
+        # bleibt damit erhalten.
+        current_value = str(st.session_state.get("private_polter_nr", "") or "").strip()
+        if not current_value or current_value == previous_auto:
+            st.session_state["private_polter_nr"] = auto_polter_nr
+
+    st.session_state["_private_polter_supplier"] = supplier_key
+    st.session_state["_private_polter_auto"] = auto_polter_nr
+
+    polter_nr = st.text_input(
         "Polternummer",
-        value=polter_nr,
-        disabled=True,
-        help="Wird automatisch aus den ersten 4 Buchstaben des Lieferanten und einer fortlaufenden Nummer erzeugt."
-    )
+        key="private_polter_nr",
+        help=(
+            "Die App schlägt automatisch eine Polternummer vor. "
+            "Bei Bedarf kannst du diesen Vorschlag hier manuell überschreiben."
+        )
+    ).strip()
+
+    if auto_polter_nr and polter_nr != auto_polter_nr:
+        st.caption(f"Automatischer Vorschlag wäre: **{auto_polter_nr}**")
 
     carrier = st.text_input(
         "Frächter",
@@ -1708,8 +1734,9 @@ def private_bereitstellung_dialog():
         use_container_width=True,
         disabled=not can_save
     ):
-        # Nummer direkt vor dem Speichern noch einmal frisch bestimmen.
-        final_polter_nr = next_private_polter_number(supplier)
+        # Die aktuell im Eingabefeld stehende Nummer speichern.
+        # Damit kann der automatische Vorschlag bei Bedarf manuell überschrieben werden.
+        final_polter_nr = str(st.session_state.get("private_polter_nr", "") or "").strip()
 
         rm_value = float(st.session_state.get("private_rm", 0.0) or 0.0)
         fm_value = round(rm_value / 1.5, 3)
