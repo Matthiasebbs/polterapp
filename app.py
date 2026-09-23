@@ -1225,23 +1225,30 @@ def secret(name):
     except Exception:
         return ""
 
-def cloud():
-    """
-    Dauerhafte Cloud-Datenbank.
-    Bevorzugt den modernen Supabase Secret Key, unterstützt aber weiterhin
-    SUPABASE_KEY als Fallback.
-    """
+def auth_cloud():
+    """Supabase-Client nur für Benutzeranmeldung (Publishable Key)."""
     url = secret("SUPABASE_URL")
-    # Für Benutzer-Login/RLS MUSS die App mit dem Publishable-/Anon-Key arbeiten.
-    # Ein Secret-/Service-Key würde RLS umgehen und darf hier nicht verwendet werden.
-    key = (
-        secret("SUPABASE_PUBLISHABLE_KEY")
-        or secret("SUPABASE_ANON_KEY")
-    )
+    key = secret("SUPABASE_PUBLISHABLE_KEY") or secret("SUPABASE_ANON_KEY")
     if create_client and url and key:
         return create_client(url, key)
     return None
 
+
+def cloud():
+    """
+    Datenbank-Client für die Übergangs-/Testphase vor aktivem RLS.
+    Streamlit läuft serverseitig; der Secret Key bleibt ausschließlich in
+    Streamlit Secrets. Jede Datenoperation wird zusätzlich nach user_id gefiltert.
+    Nach erfolgreichem Funktionstest wird RLS aktiviert und der Datenzugriff
+    endgültig auf den authentifizierten Benutzer-Client umgestellt.
+    """
+    url = secret("SUPABASE_URL")
+    key = secret("SUPABASE_SECRET_KEY") or secret("SUPABASE_KEY")
+    if create_client and url and key:
+        return create_client(url, key)
+    return None
+
+AUTH_SB = auth_cloud()
 SB = cloud()
 
 def current_user_id():
@@ -1251,15 +1258,15 @@ def current_user_email():
     return st.session_state.get("auth_user_email", "")
 
 def restore_auth_session():
-    """Supabase-Session nach einem Streamlit-Rerun wieder an den Client binden."""
-    if not SB:
+    """Supabase-Session nach einem Streamlit-Rerun wieder an den Auth-Client binden."""
+    if not AUTH_SB:
         return False
     access = st.session_state.get("auth_access_token")
     refresh = st.session_state.get("auth_refresh_token")
     if not access or not refresh:
         return False
     try:
-        res = SB.auth.set_session(access, refresh)
+        res = AUTH_SB.auth.set_session(access, refresh)
         session = getattr(res, "session", None)
         user = getattr(res, "user", None)
         if session:
@@ -1275,9 +1282,9 @@ def restore_auth_session():
         return False
 
 def sign_out_user():
-    if SB:
+    if AUTH_SB:
         try:
-            SB.auth.sign_out()
+            AUTH_SB.auth.sign_out()
         except Exception:
             pass
     for k in ["auth_access_token","auth_refresh_token","auth_user_id","auth_user_email"]:
@@ -2180,10 +2187,10 @@ def backup_center():
 # ============================================================
 # BENUTZER-LOGIN
 # ============================================================
-if SB:
+if AUTH_SB:
     restore_auth_session()
 
-if SB and not current_user_id():
+if AUTH_SB and not current_user_id():
     st.title("🪵 Polter-Zentrale")
     st.markdown("""
     <div class="forest-header">
@@ -2206,7 +2213,7 @@ if SB and not current_user_id():
                 st.error("Bitte E-Mail-Adresse und Passwort eingeben.")
             else:
                 try:
-                    res = SB.auth.sign_in_with_password({"email": email.strip(), "password": password})
+                    res = AUTH_SB.auth.sign_in_with_password({"email": email.strip(), "password": password})
                     if res.user and res.session:
                         st.session_state["auth_user_id"] = str(res.user.id)
                         st.session_state["auth_user_email"] = str(res.user.email or email.strip())
