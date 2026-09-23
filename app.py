@@ -1226,7 +1226,7 @@ def secret(name):
         return ""
 
 def auth_cloud():
-    """Supabase-Client nur für Benutzeranmeldung (Publishable Key)."""
+    """Supabase-Client für Anmeldung UND Datenzugriff mit RLS (Publishable Key)."""
     url = secret("SUPABASE_URL")
     key = secret("SUPABASE_PUBLISHABLE_KEY") or secret("SUPABASE_ANON_KEY")
     if create_client and url and key:
@@ -1234,22 +1234,12 @@ def auth_cloud():
     return None
 
 
-def cloud():
-    """
-    Datenbank-Client für die Übergangs-/Testphase vor aktivem RLS.
-    Streamlit läuft serverseitig; der Secret Key bleibt ausschließlich in
-    Streamlit Secrets. Jede Datenoperation wird zusätzlich nach user_id gefiltert.
-    Nach erfolgreichem Funktionstest wird RLS aktiviert und der Datenzugriff
-    endgültig auf den authentifizierten Benutzer-Client umgestellt.
-    """
-    url = secret("SUPABASE_URL")
-    key = secret("SUPABASE_SECRET_KEY") or secret("SUPABASE_KEY")
-    if create_client and url and key:
-        return create_client(url, key)
-    return None
-
+# WICHTIG: Ein gemeinsamer Supabase-Client für Auth und Datenzugriff.
+# Nach sign_in_with_password / set_session trägt dieser Client das JWT des
+# angemeldeten Benutzers. Dadurch greifen die RLS-Policies in Supabase.
+# Der SUPABASE_SECRET_KEY wird für den normalen App-Betrieb NICHT verwendet.
 AUTH_SB = auth_cloud()
-SB = cloud()
+SB = AUTH_SB
 
 def current_user_id():
     return st.session_state.get("auth_user_id", "")
