@@ -1232,16 +1232,57 @@ def cloud():
     SUPABASE_KEY als Fallback.
     """
     url = secret("SUPABASE_URL")
+    # Für Benutzer-Login/RLS MUSS die App mit dem Publishable-/Anon-Key arbeiten.
+    # Ein Secret-/Service-Key würde RLS umgehen und darf hier nicht verwendet werden.
     key = (
-        secret("SUPABASE_SECRET_KEY")
-        or secret("SUPABASE_KEY")
-        or secret("SUPABASE_PUBLISHABLE_KEY")
+        secret("SUPABASE_PUBLISHABLE_KEY")
+        or secret("SUPABASE_ANON_KEY")
     )
     if create_client and url and key:
         return create_client(url, key)
     return None
 
 SB = cloud()
+
+def current_user_id():
+    return st.session_state.get("auth_user_id", "")
+
+def current_user_email():
+    return st.session_state.get("auth_user_email", "")
+
+def restore_auth_session():
+    """Supabase-Session nach einem Streamlit-Rerun wieder an den Client binden."""
+    if not SB:
+        return False
+    access = st.session_state.get("auth_access_token")
+    refresh = st.session_state.get("auth_refresh_token")
+    if not access or not refresh:
+        return False
+    try:
+        res = SB.auth.set_session(access, refresh)
+        session = getattr(res, "session", None)
+        user = getattr(res, "user", None)
+        if session:
+            st.session_state["auth_access_token"] = session.access_token
+            st.session_state["auth_refresh_token"] = session.refresh_token
+        if user:
+            st.session_state["auth_user_id"] = str(user.id)
+            st.session_state["auth_user_email"] = str(user.email or "")
+        return bool(user)
+    except Exception:
+        for k in ["auth_access_token","auth_refresh_token","auth_user_id","auth_user_email"]:
+            st.session_state.pop(k, None)
+        return False
+
+def sign_out_user():
+    if SB:
+        try:
+            SB.auth.sign_out()
+        except Exception:
+            pass
+    for k in ["auth_access_token","auth_refresh_token","auth_user_id","auth_user_email"]:
+        st.session_state.pop(k, None)
+
 
 def local_db():
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -1291,7 +1332,7 @@ CON = local_db() if SB is None else None
 
 def df_all():
     if SB:
-        data = SB.table("polter").select("*").order("id", desc=True).execute().data
+        data = SB.table("polter").select("*").eq("user_id", current_user_id()).order("id", desc=True).execute().data
         df = pd.DataFrame(data) if data else pd.DataFrame(columns=["id"]+FIELDS)
     else:
         df = pd.read_sql_query("SELECT * FROM polter ORDER BY id DESC", CON)
@@ -1307,7 +1348,7 @@ def df_abfuhren(pid=None):
     verwendet; lokal die SQLite-Tabelle.
     """
     if SB:
-        q = SB.table("abfuhren").select("*").order("gebucht_am", desc=True)
+        q = SB.table("abfuhren").select("*").eq("user_id", current_user_id()).order("gebucht_am", desc=True)
         if pid is not None:
             q = q.eq("polter_id", int(pid))
         data = q.execute().data
@@ -1335,6 +1376,7 @@ def record_abfuhr(pid, abgefahren_rm, abgefahren_fm, rest_rm, rest_fm):
         return
 
     rec = {
+        "user_id": current_user_id(),
         "polter_id": int(pid),
         "abgefahren_rm": round(float(abgefahren_rm), 3),
         "abgefahren_fm": round(float(abgefahren_fm), 3),
@@ -1408,9 +1450,10 @@ def save_rows(rows):
         r["interne_notiz"] = ""
         r["importiert_am"] = now
         r["geaendert_am"] = now
+        r["user_id"] = current_user_id()
 
-        # Nur bekannte DB-Felder senden.
-        r = {c: r.get(c) for c in FIELDS}
+        # Nur bekannte DB-Felder senden (+ Benutzerzuordnung).
+        r = {c: r.get(c) for c in FIELDS} | {"user_id": r.get("user_id")}
         new_rows.append(r)
         existing_keys.add(key)
 
@@ -1437,7 +1480,7 @@ def update_polter(pid, rm, fm, status, note, lat, lon):
         "geaendert_am": datetime.now().isoformat(timespec="seconds")
     }
     if SB:
-        SB.table("polter").update(values).eq("id", int(pid)).execute()
+        SB.table("polter").update(values).eq("id", int(pid)).eq("user_id", current_user_id()).execute()
     else:
         CON.execute("""
         UPDATE polter SET menge_rm_aktuell=?, kubatur_fm_aktuell=?, status=?,
@@ -1453,7 +1496,7 @@ def update_polter_coordinates(pid, lat, lon):
         "geaendert_am": datetime.now().isoformat(timespec="seconds")
     }
     if SB:
-        SB.table("polter").update(values).eq("id", int(pid)).execute()
+        SB.table("polter").update(values).eq("id", int(pid)).eq("user_id", current_user_id()).execute()
     else:
         CON.execute(
             "UPDATE polter SET lat=?, lon=?, geaendert_am=? WHERE id=?",
@@ -1471,8 +1514,8 @@ def delete_group(name):
 
     if SB:
         if ids:
-            SB.table("abfuhren").delete().in_("polter_id", ids).execute()
-        SB.table("polter").delete().eq("bereitstellung", str(name)).execute()
+            SB.table("abfuhren").delete().in_("polter_id", ids).eq("user_id", current_user_id()).execute()
+        SB.table("polter").delete().eq("bereitstellung", str(name)).eq("user_id", current_user_id()).execute()
     else:
         if ids:
             placeholders = ",".join(["?"] * len(ids))
@@ -1482,8 +1525,8 @@ def delete_group(name):
 
 def delete_one(pid):
     if SB:
-        SB.table("abfuhren").delete().eq("polter_id", int(pid)).execute()
-        SB.table("polter").delete().eq("id", int(pid)).execute()
+        SB.table("abfuhren").delete().eq("polter_id", int(pid)).eq("user_id", current_user_id()).execute()
+        SB.table("polter").delete().eq("id", int(pid)).eq("user_id", current_user_id()).execute()
     else:
         CON.execute("DELETE FROM abfuhren WHERE polter_id=?", (int(pid),))
         CON.execute("DELETE FROM polter WHERE id=?", (int(pid),))
@@ -2087,7 +2130,7 @@ def backup_center():
                             for i in range(0, len(ids), chunk_size):
                                 SB.table("polter").delete().in_(
                                     "id", ids[i:i + chunk_size]
-                                ).execute()
+                                ).eq("user_id", current_user_id()).execute()
                     else:
                         CON.execute("DELETE FROM polter")
                         CON.commit()
@@ -2100,6 +2143,7 @@ def backup_center():
                         if not rr.get("importiert_am"):
                             rr["importiert_am"] = now
                         rr["geaendert_am"] = rr.get("geaendert_am") or now
+                        rr["user_id"] = current_user_id()
                         cleaned.append(rr)
 
                     if SB:
@@ -2132,6 +2176,48 @@ def backup_center():
             )
 
 
+
+# ============================================================
+# BENUTZER-LOGIN
+# ============================================================
+if SB:
+    restore_auth_session()
+
+if SB and not current_user_id():
+    st.title("🪵 Polter-Zentrale")
+    st.markdown("""
+    <div class="forest-header">
+        <div class="forest-header-icon">🌲</div>
+        <div>
+            <div class="forest-header-title">Anmeldung</div>
+            <div class="forest-header-sub">Persönlicher Zugang zur digitalen Polterverwaltung</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    login_col, _ = st.columns([1.05, 1.0])
+    with login_col:
+        with st.form("login_form", clear_on_submit=False):
+            email = st.text_input("E-Mail-Adresse", placeholder="name@firma.at")
+            password = st.text_input("Passwort", type="password")
+            submitted = st.form_submit_button("Anmelden", type="primary", use_container_width=True)
+        if submitted:
+            if not email.strip() or not password:
+                st.error("Bitte E-Mail-Adresse und Passwort eingeben.")
+            else:
+                try:
+                    res = SB.auth.sign_in_with_password({"email": email.strip(), "password": password})
+                    if res.user and res.session:
+                        st.session_state["auth_user_id"] = str(res.user.id)
+                        st.session_state["auth_user_email"] = str(res.user.email or email.strip())
+                        st.session_state["auth_access_token"] = res.session.access_token
+                        st.session_state["auth_refresh_token"] = res.session.refresh_token
+                        st.rerun()
+                    else:
+                        st.error("Anmeldung nicht möglich. Bitte Zugangsdaten prüfen.")
+                except Exception:
+                    st.error("Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen.")
+    st.stop()
 
 # Pin-Helfer früh verfügbar machen.
 def polter_pin_html(color, size=42):
@@ -2202,7 +2288,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if SB:
-    st.success("☁️ LIVE: Supabase verbunden – Polter, Mengen, Status und Notizen werden dauerhaft gespeichert.")
+    user_col, logout_col = st.columns([8.5, 1.5], vertical_alignment="center")
+    with user_col:
+        st.caption(f"👤 Angemeldet: {current_user_email()}")
+    with logout_col:
+        if st.button("Abmelden", key="logout_user", use_container_width=True):
+            sign_out_user()
+            st.rerun()
+    st.success("☁️ LIVE: Supabase verbunden – deine Polter, Mengen, Status und Notizen werden dauerhaft gespeichert.")
 else:
     st.warning("🧪 Lokaler Testmodus. Für die veröffentlichte Web-App Supabase verbinden.")
 
