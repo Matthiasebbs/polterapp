@@ -905,6 +905,11 @@ import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
+try:
+    from streamlit_cookies_manager import EncryptedCookieManager
+except Exception:
+    EncryptedCookieManager = None
+
 
 try:
     from supabase import create_client
@@ -1241,6 +1246,35 @@ def auth_cloud():
 AUTH_SB = auth_cloud()
 SB = AUTH_SB
 
+# Dauerhafte Anmeldung im Browser.
+# Die Auth-Tokens werden verschluesselt in einem Browser-Cookie gespeichert.
+COOKIE_PASSWORD = secret("COOKIE_PASSWORD")
+AUTH_COOKIES = None
+if EncryptedCookieManager and COOKIE_PASSWORD:
+    AUTH_COOKIES = EncryptedCookieManager(
+        prefix="polter_zentrale_auth/",
+        password=COOKIE_PASSWORD,
+    )
+    if not AUTH_COOKIES.ready():
+        st.stop()
+
+def save_auth_cookie(access_token, refresh_token):
+    if not AUTH_COOKIES:
+        return
+    AUTH_COOKIES["access_token"] = access_token or ""
+    AUTH_COOKIES["refresh_token"] = refresh_token or ""
+    AUTH_COOKIES.save()
+
+def clear_auth_cookie():
+    if not AUTH_COOKIES:
+        return
+    for key in ["access_token", "refresh_token"]:
+        try:
+            del AUTH_COOKIES[key]
+        except Exception:
+            pass
+    AUTH_COOKIES.save()
+
 def current_user_id():
     return st.session_state.get("auth_user_id", "")
 
@@ -1253,6 +1287,13 @@ def restore_auth_session():
         return False
     access = st.session_state.get("auth_access_token")
     refresh = st.session_state.get("auth_refresh_token")
+
+    # Nach komplettem Schliessen/Neustart von Browser oder Streamlit ist
+    # session_state leer. Dann die verschluesselten Browser-Cookies verwenden.
+    if (not access or not refresh) and AUTH_COOKIES:
+        access = AUTH_COOKIES.get("access_token", "")
+        refresh = AUTH_COOKIES.get("refresh_token", "")
+
     if not access or not refresh:
         return False
     try:
@@ -1262,6 +1303,8 @@ def restore_auth_session():
         if session:
             st.session_state["auth_access_token"] = session.access_token
             st.session_state["auth_refresh_token"] = session.refresh_token
+            # set_session kann Tokens erneuern; immer den neuesten Stand sichern.
+            save_auth_cookie(session.access_token, session.refresh_token)
         if user:
             st.session_state["auth_user_id"] = str(user.id)
             st.session_state["auth_user_email"] = str(user.email or "")
@@ -1279,6 +1322,7 @@ def sign_out_user():
             pass
     for k in ["auth_access_token","auth_refresh_token","auth_user_id","auth_user_email"]:
         st.session_state.pop(k, None)
+    clear_auth_cookie()
 
 
 def local_db():
@@ -2177,6 +2221,14 @@ def backup_center():
 # ============================================================
 # BENUTZER-LOGIN
 # ============================================================
+if AUTH_SB and (EncryptedCookieManager is None or not COOKIE_PASSWORD):
+    st.error(
+        "Dauerhafte Anmeldung ist noch nicht eingerichtet. "
+        "Bitte in requirements.txt 'streamlit-cookies-manager' und in den "
+        "Streamlit-Secrets COOKIE_PASSWORD hinterlegen."
+    )
+    st.stop()
+
 if AUTH_SB:
     restore_auth_session()
 
@@ -2209,6 +2261,7 @@ if AUTH_SB and not current_user_id():
                         st.session_state["auth_user_email"] = str(res.user.email or email.strip())
                         st.session_state["auth_access_token"] = res.session.access_token
                         st.session_state["auth_refresh_token"] = res.session.refresh_token
+                        save_auth_cookie(res.session.access_token, res.session.refresh_token)
                         st.rerun()
                     else:
                         st.error("Anmeldung nicht möglich. Bitte Zugangsdaten prüfen.")
