@@ -252,6 +252,94 @@ def parse_muenchen(pages, filename):
     return rows
 
 
+
+def parse_wbv_ebersberg(pages, filename):
+    """
+    Parser für Bereitstellungsanzeigen der WBV Ebersberg-München/Ost e. V.
+
+    Beispiel BM26-0287:
+      4419  1  Fi  IS  FK  2.00  10,500 Rm  48,066058  12,049967 ...
+
+    Besonderheiten:
+    - Die Stückzahl kann fehlen und bleibt dann leer/None.
+    - Koord X ist bei diesem Format der Breitengrad, Koord Y der Längengrad.
+    - RM ist die Mengenbasis; FM wird nach der App-Regel 1,5 RM = 1 FM berechnet.
+    """
+    first = pages[0] if pages else ""
+    if "WBV Ebersberg" not in first or "Polterinformation:" not in first:
+        return []
+
+    nr = re.search(
+        r"(?:Bereitstellungsanzeige\s*)?Nr\.[ \t]*([A-Z]{1,4}\d{2}-\d+)",
+        first,
+        re.I
+    )
+    if not nr:
+        return []
+
+    date = re.search(r"Bereitstellungsdatum:[ \t]*(\d{2}\.\d{2}\.\d{4})", first, re.I)
+    contract = re.search(r"Kaufvertragsnummer:[ \t]*([^\n]+)", first, re.I)
+
+    # Für die Tabellenzeilen reicht Seite 1. Seite 2 enthält dieselbe
+    # Polterinformation nochmals und würde sonst Duplikate erzeugen.
+    lines = [re.sub(r"\s+", " ", ln.strip()) for ln in first.splitlines() if ln.strip()]
+
+    row_re = re.compile(
+        r"^(?P<liste>\d+)\s+"
+        r"(?:(?P<los>\d+)\s+)?"
+        r"(?P<pnr>\d+)\s+"
+        r"(?P<ha>[A-Za-zÄÖÜäöüß]+)\s+"
+        r"(?P<hs>[A-Za-zÄÖÜäöüß0-9.-]+)\s+"
+        r"(?P<gkl>[A-Za-zÄÖÜäöüß0-9.-]+)\s+"
+        r"(?P<laenge>\d+(?:[.,]\d+)?)\s+"
+        r"(?:(?P<stueck>\d+)\s+)?"
+        r"(?P<menge>\d+(?:[.,]\d+)?)\s+"
+        r"(?P<einheit>Rm|RM|FmoR|FM|EFm)\s+"
+        r"(?P<lat>\d{1,2}[.,]\d{4,8})\s+"
+        r"(?P<lon>\d{1,3}[.,]\d{4,8})"
+        r"(?:\s+(?P<lagerort>.*))?$",
+        re.I
+    )
+
+    rows = []
+    for line in lines:
+        m = row_re.match(line)
+        if not m:
+            continue
+
+        d = m.groupdict()
+        amount = n(d["menge"])
+        unit = d["einheit"]
+
+        r = empty(filename)
+        r.update(
+            bereitstellung=nr.group(1).strip(),
+            lieferant="WBV Ebersberg-München/Ost",
+            vertragsnummer=contract.group(1).strip() if contract else "",
+            datum=date.group(1) if date else "",
+            holzliste=d["liste"],
+            los=d.get("los") or "",
+            polter_nr=d["pnr"],
+            holzart=d["ha"],
+            sortiment=f'{d["hs"]} {d["gkl"]}'.strip(),
+            laenge_m=n(d["laenge"]),
+            stueck=int(d["stueck"]) if d.get("stueck") else None,
+            einheit=unit,
+            lat=n(d["lat"]),
+            lon=n(d["lon"]),
+            lagerort=(d.get("lagerort") or "").strip()
+        )
+
+        if unit.lower() == "rm":
+            qty(r, rm=amount, fm=None)
+        else:
+            qty(r, rm=None, fm=amount)
+
+        rows.append(r)
+
+    return rows
+
+
 def parse_wbv_traunstein(pages, filename):
     """
     Parser für Bereitstellungen der WBV Traunstein.
@@ -777,6 +865,7 @@ def extract_fraechter_from_filename(filename):
 PARSERS = [
     ("WBV Wasserburg", parse_wbv_wasserburg),
     ("München / Stadtwerke", parse_muenchen),
+    ("WBV Ebersberg-München/Ost", parse_wbv_ebersberg),
     ("WBV Traunstein", parse_wbv_traunstein),
     ("WBV Altötting-Burghausen", parse_wbv_altoetting),
     ("FBG Isar-Lech", parse_fbg_isar_lech),
