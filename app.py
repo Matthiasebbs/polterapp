@@ -2392,15 +2392,23 @@ if app_page == "Start":
             if st.button("↪  Abmelden", key="logout_user", use_container_width=True):
                 sign_out_user(); st.rerun()
 else:
+    # Polter verwalten und Abfuhr behalten die bestehende Filter-Sidebar.
+    # Private Bereitstellung und PDF-Import nutzen dagegen die volle Breite.
+    if app_page in ("Bereitstellung erstellen", "Bereitstellung einlesen"):
+        st.markdown("""
+        <style>
+        section[data-testid="stSidebar"] {display:none !important;}
+        [data-testid="stSidebarCollapsedControl"] {display:none !important;}
+        .block-container {max-width:100% !important;padding-left:2rem !important;padding-right:2rem !important;padding-top:.8rem !important;}
+        </style>
+        """, unsafe_allow_html=True)
+
     st.markdown("""
     <style>
-    section[data-testid="stSidebar"] {display:none !important;}
-    [data-testid="stSidebarCollapsedControl"] {display:none !important;}
-    .block-container {max-width:100% !important;padding-left:2rem !important;padding-right:2rem !important;padding-top:.8rem !important;}
-    .work-brand{display:flex;align-items:center;gap:14px;min-height:68px}
-    .work-brand-logo{width:62px;height:62px;object-fit:contain;border-radius:13px}
-    .work-brand-title{font-size:1.72rem;font-weight:800;color:#173426;letter-spacing:-.035em;line-height:1}
-    .work-brand-sub{font-size:.7rem;color:#708b61;letter-spacing:.18em;font-weight:700;margin-top:6px}
+    .work-brand{display:flex;align-items:center;gap:18px;min-height:102px}
+    .work-brand-logo{width:96px;height:96px;object-fit:contain;border-radius:18px}
+    .work-brand-title{font-size:2.05rem;font-weight:800;color:#173426;letter-spacing:-.04em;line-height:1}
+    .work-brand-sub{font-size:.76rem;color:#708b61;letter-spacing:.19em;font-weight:700;margin-top:8px}
     </style>
     """, unsafe_allow_html=True)
     top_brand, top_actions = st.columns([7.6,2.4], vertical_alignment="center")
