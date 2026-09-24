@@ -2451,6 +2451,34 @@ else:
             if st.button("↪ Abmelden", key="work_logout", use_container_width=True):
                 sign_out_user(); st.rerun()
 
+
+st.markdown('''
+<style>
+.hoiz-hero{
+    background-size:100% 100% !important;
+    background-position:center center !important;
+    background-repeat:no-repeat !important;
+    height:285px !important;
+}
+.dash-metric,
+.dash-metric.green,
+.dash-metric.brown,
+.dash-metric.blue{
+    background:linear-gradient(145deg,#eef5ec 0%,#e3eee0 100%) !important;
+    border:1px solid #c8d9c5 !important;
+    box-shadow:0 5px 16px rgba(45,78,54,.07) !important;
+}
+.dash-metric .dash-icon,
+.dash-metric.green .dash-icon,
+.dash-metric.brown .dash-icon,
+.dash-metric.blue .dash-icon{
+    background:rgba(255,255,255,.46) !important;
+    color:#26312b !important;
+    border-color:#b9cdb6 !important;
+}
+</style>
+''', unsafe_allow_html=True)
+
 if app_page == "Start":
     dash_df = df_all().copy()
     if not dash_df.empty:
