@@ -2328,6 +2328,23 @@ def polter_pin_html(color, size=42):
     """
 
 
+
+def hoiz_icon(name, size=25):
+    """Einheitliche, farblose Line-Icons für die Oberfläche."""
+    icons = {
+        "polter": '<path d="M12 21c4.5-5.1 7-8.5 7-12a7 7 0 1 0-14 0c0 3.5 2.5 6.9 7 12Z"/><circle cx="12" cy="9" r="2.2"/><path d="M8.2 14.2h7.6M9.4 16.6h5.2"/>',
+        "tree": '<path d="m12 2-4 6h2l-4 5.5h3L5.5 19h13L15 13.5h3L14 8h2l-4-6Z"/><path d="M12 19v3"/>',
+        "truck": '<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+        "mountain": '<path d="m3 20 6.5-10 3 4 2.5-4 6 10H3Z"/><path d="m8.2 12 1.3-2 1.4 1.9M14 12l1-2 1.4 2"/>',
+        "import": '<path d="M12 3v12M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/>',
+        "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/>',
+        "home": '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/>',
+        "private": '<path d="m3 20 6.5-10 3 4 2.5-4 6 10H3Z"/>',
+        "file": '<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 12h6M9 16h6"/>',
+    }
+    body = icons.get(name, icons["polter"])
+    return f'<svg class="hoiz-line-icon" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{body}</svg>'
+
 # ============================================================
 # DIGITALER HOIZPLOTZ – NAVIGATION / DASHBOARD
 # ============================================================
@@ -2366,7 +2383,7 @@ st.markdown("""
 [data-testid="stSidebar"] .stButton>button{justify-content:flex-start;text-align:left;border:0;background:transparent;color:#193226;box-shadow:none;padding:.62rem .72rem}
 [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#376c43;color:white;border-radius:9px}.side-brand-sub{text-align:center;font-size:.68rem;letter-spacing:.19em;color:#647269;margin-top:-8px}.side-separator{height:1px;background:rgba(23,52,38,.12);margin:18px 0}.side-user{font-size:.76rem;color:#68766d;line-height:1.45;margin:14px 4px 8px}.subpage-brand{display:flex;align-items:baseline;gap:14px;padding:.35rem 0 1rem}.subpage-brand b{font-size:1.45rem;color:#173426}.subpage-brand span{font-size:.76rem;letter-spacing:.12em;color:#7a817c;text-transform:uppercase}
 .hoiz-hero{height:245px;border-radius:18px;background-size:cover;background-position:center;box-shadow:0 8px 30px rgba(28,52,39,.12);position:relative;overflow:hidden;margin-bottom:14px;border:1px solid rgba(40,70,50,.08)}.hero-copy{position:absolute;left:52px;top:27px}.hero-small{font-size:2rem;line-height:1;color:#315c46;font-weight:500}.hero-title{font-size:4.5rem;line-height:.95;font-weight:800;letter-spacing:-.055em;color:#6a3218}.hero-title span{color:#174d2a}.hero-line{width:210px;height:4px;background:#4c7e3c;margin:8px 0 13px;border-radius:4px}.hero-kicker{font-size:.82rem;letter-spacing:.28em;color:#253a30;font-weight:600}
-.dash-metric{min-height:126px;border-radius:15px;padding:18px;background:#fff;border:1px solid rgba(39,68,51,.10);box-shadow:0 5px 18px rgba(32,56,43,.06);position:relative}.dash-icon{position:absolute;left:17px;top:18px;width:47px;height:47px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.28rem;background:#fff;color:#26312b;border:1.5px solid #cfd6d1;box-shadow:0 2px 7px rgba(32,56,43,.05)}.dash-metric.green .dash-icon,.dash-metric.brown .dash-icon,.dash-metric.blue .dash-icon{color:#26312b;border-color:#cfd6d1;background:#fff}.dash-number{font-size:1.85rem;font-weight:800;color:#102c20;margin-left:62px}.dash-label{font-size:.98rem;color:#27382f;margin-left:62px}.dash-note{font-size:.72rem;color:#7b857f;margin-left:62px;margin-top:8px}.panel-heading{font-size:1.05rem;color:#142d22;padding:16px 13px 10px}.activity-box{background:#fff;border:1px solid rgba(39,68,51,.11);border-radius:13px;padding:4px 13px;min-height:430px;box-shadow:0 4px 15px rgba(32,56,43,.05)}.activity-line{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:13px 0;border-bottom:1px solid #edf0ed}.activity-line:last-child{border-bottom:0}.activity-circle{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;color:#26312b;border:1.5px solid #cfd6d1}.activity-circle.green,.activity-circle.brown,.activity-circle.blue{color:#26312b;border-color:#cfd6d1;background:#fff}.activity-text{min-width:0;display:flex;flex-direction:column}.activity-text b{font-size:.82rem;color:#1d3027;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.activity-text span{font-size:.72rem;color:#7a847e;margin-top:3px}.activity-date{font-size:.67rem;color:#8a928d;white-space:nowrap}.activity-box.empty{display:flex;align-items:center;justify-content:center;color:#7d8881}.quick-heading{font-size:1.05rem;font-weight:750;color:#173426;margin:18px 0 8px}.quick-tile{min-height:82px;border-radius:13px;padding:15px;display:flex;align-items:center;gap:12px;border:1px solid rgba(39,68,51,.08)}.quick-tile.green{background:#f0f6ec}.quick-tile.blue{background:#eef5fb}.quick-tile.brown{background:#f8f0e8}.quick-tile.slate{background:#edf3f5}.quick-icon{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;color:#26312b;font-size:1.28rem;border:1.5px solid #cfd6d1;box-shadow:0 2px 7px rgba(32,56,43,.05)}.quick-tile.blue .quick-icon,.quick-tile.brown .quick-icon,.quick-tile.slate .quick-icon{color:#26312b;border-color:#cfd6d1;background:#fff}.quick-tile b{display:block;color:#173426;font-size:.88rem}.quick-tile span{display:block;color:#758078;font-size:.71rem;margin-top:4px}
+.dash-metric{min-height:126px;border-radius:15px;padding:18px;background:#fff;border:1px solid rgba(39,68,51,.10);box-shadow:0 5px 18px rgba(32,56,43,.06);position:relative}.dash-icon{position:absolute;left:17px;top:18px;width:47px;height:47px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:transparent;color:#202823;border:1px solid #d9dedb;box-shadow:none}.dash-metric.green .dash-icon,.dash-metric.brown .dash-icon,.dash-metric.blue .dash-icon{color:#202823;border-color:#d9dedb;background:transparent}.hoiz-line-icon{display:block;color:inherit}.dash-number{font-size:1.85rem;font-weight:800;color:#102c20;margin-left:62px}.dash-label{font-size:.98rem;color:#27382f;margin-left:62px}.dash-note{font-size:.72rem;color:#7b857f;margin-left:62px;margin-top:8px}.panel-heading{font-size:1.05rem;color:#142d22;padding:16px 13px 10px}.activity-box{background:#fff;border:1px solid rgba(39,68,51,.11);border-radius:13px;padding:4px 13px;min-height:430px;box-shadow:0 4px 15px rgba(32,56,43,.05)}.activity-line{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:13px 0;border-bottom:1px solid #edf0ed}.activity-line:last-child{border-bottom:0}.activity-circle{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:transparent;color:#202823;border:1px solid #d9dedb}.activity-circle.green,.activity-circle.brown,.activity-circle.blue{color:#202823;border-color:#d9dedb;background:transparent}.activity-text{min-width:0;display:flex;flex-direction:column}.activity-text b{font-size:.82rem;color:#1d3027;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.activity-text span{font-size:.72rem;color:#7a847e;margin-top:3px}.activity-date{font-size:.67rem;color:#8a928d;white-space:nowrap}.activity-box.empty{display:flex;align-items:center;justify-content:center;color:#7d8881}.quick-heading{font-size:1.05rem;font-weight:750;color:#173426;margin:18px 0 8px}.quick-tile{min-height:82px;border-radius:13px;padding:15px;display:flex;align-items:center;gap:12px;border:1px solid rgba(39,68,51,.08)}.quick-tile.green{background:#f0f6ec}.quick-tile.blue{background:#eef5fb}.quick-tile.brown{background:#f8f0e8}.quick-tile.slate{background:#edf3f5}.quick-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:transparent;color:#202823;border:1px solid #d9dedb;box-shadow:none}.quick-tile.blue .quick-icon,.quick-tile.brown .quick-icon,.quick-tile.slate .quick-icon{color:#202823;border-color:#d9dedb;background:transparent}.quick-tile b{display:block;color:#173426;font-size:.88rem}.quick-tile span{display:block;color:#758078;font-size:.71rem;margin-top:4px}
 @media(max-width:900px){.hoiz-hero{height:205px}.hero-copy{left:28px;top:28px}.hero-title{font-size:3.25rem}.hero-small{font-size:1.5rem}.activity-date{display:none}.dash-note{display:none}}
 </style>
 """, unsafe_allow_html=True)
@@ -2380,7 +2397,7 @@ if app_page == "Start":
         if logo_path.exists():
             st.image(str(logo_path), use_container_width=True)
         st.markdown("<div class='side-brand-sub'>RUNDHOLZ DIGITAL VERWALTEN</div>", unsafe_allow_html=True)
-        nav_items = [("Start","⌂","Startseite"),("Polter verwalten","⌕","Polter verwalten"),("Bereitstellung erstellen","⌃","Private Bereitstellung"),("Bereitstellung einlesen","⇩","PDF-Import"),("Abfuhr","▱","Abfuhr")]
+        nav_items = [("Start","⌂","Startseite"),("Polter verwalten","⌕","Polter verwalten"),("Bereitstellung erstellen","⛰","Private Bereitstellung"),("Bereitstellung einlesen","⇩","PDF-Import"),("Abfuhr","🚚","Abfuhr")]
         for page, icon, label in nav_items:
             if st.button(f"{icon}  {label}", key=f"side_nav_{page}", type="primary" if app_page == page else "secondary", use_container_width=True):
                 go_page(page); st.rerun()
@@ -2450,7 +2467,7 @@ if app_page == "Start":
     st.markdown(f'''<div class="hoiz-hero" style="{hero_css}"><div class="hero-copy"><div class="hero-small">Digitaler</div><div class="hero-title"><span>Hoiz</span>plotz</div><div class="hero-line"></div><div class="hero-kicker">RUNDHOLZ DIGITAL VERWALTEN</div></div></div>''', unsafe_allow_html=True)
 
     m1,m2,m3,m4=st.columns(4,gap="small")
-    cards=[(m1,"♧",total_count,"Polter gesamt","Gesamter Datenbestand","brown"),(m2,"♠",active_count,"Aktuell im Bestand","Offen oder teilweise abgefahren","green"),(m3,"▱",completed_count,"Abgefahren","Vollständig abgeschlossen","brown"),(m4,"⌃",private_count,"Private Bereitstellungen","Manuell angelegte Polter","blue")]
+    cards=[(m1,hoiz_icon("polter"),total_count,"Polter gesamt","Gesamter Datenbestand","brown"),(m2,hoiz_icon("tree"),active_count,"Aktuell im Bestand","Offen oder teilweise abgefahren","green"),(m3,hoiz_icon("truck"),completed_count,"Abgefahren","Vollständig abgeschlossen","brown"),(m4,hoiz_icon("mountain"),private_count,"Private Bereitstellungen","Manuell angelegte Polter","blue")]
     for col,icon,val,label,note,tone in cards:
         with col: st.markdown(f'<div class="dash-metric {tone}"><div class="dash-icon">{icon}</div><div class="dash-number">{val}</div><div class="dash-label">{label}</div><div class="dash-note">{note}</div></div>', unsafe_allow_html=True)
 
@@ -2482,13 +2499,13 @@ if app_page == "Start":
                 ts=pd.to_datetime(r.get("gebucht_am"),errors="coerce",utc=True)
                 if pd.isna(ts): continue
                 pid=int(r.get("polter_id")) if pd.notna(r.get("polter_id")) else 0; nr=lookup.get(pid,str(pid)); rest=float(r.get("rest_rm") or 0)
-                activities.append((int(ts.value),ts,"▱",f"Polter {nr} – {'Abfuhr abgeschlossen' if rest<=.0005 else 'Teilabfuhr erfasst'}",f"{float(r.get('abgefahren_rm') or 0):.1f} RM abgefahren","brown"))
+                activities.append((int(ts.value),ts,hoiz_icon("truck",22),f"Polter {nr} – {'Abfuhr abgeschlossen' if rest<=.0005 else 'Teilabfuhr erfasst'}",f"{float(r.get('abgefahren_rm') or 0):.1f} RM abgefahren","brown"))
         if not dash_df.empty:
             for _,r in dash_df.iterrows():
                 ts=pd.to_datetime(r.get("importiert_am"),errors="coerce",utc=True)
                 if pd.isna(ts): continue
                 nr=str(r.get("polter_nr") or ""); private="Private Bauernpartie" in str(r.get("quelle_datei") or "")
-                activities.append((int(ts.value),ts,"♧" if private else "▣",f"Polter {nr} – {'Privat erstellt' if private else 'Neu importiert'}",str(r.get("lieferant") or ""),"blue" if private else "green"))
+                activities.append((int(ts.value),ts,hoiz_icon("mountain",22) if private else hoiz_icon("import",22),f"Polter {nr} – {'Privat erstellt' if private else 'Neu importiert'}",str(r.get("lieferant") or ""),"blue" if private else "green"))
         activities=sorted(activities,key=lambda x:x[0],reverse=True)[:6]
         if activities:
             rows=[]
@@ -2501,7 +2518,7 @@ if app_page == "Start":
 
     st.markdown("<div class='quick-heading'>Schnellzugriff</div>",unsafe_allow_html=True)
     q1,q2,q3,q4=st.columns(4,gap="small")
-    quick=[(q1,"⌃","Private Bereitstellung","Manuell erfassen","Bereitstellung erstellen","green"),(q2,"⇩","PDF-Import","Bereitstellungen einlesen","Bereitstellung einlesen","blue"),(q3,"▱","Abfuhr","Abfuhr erfassen","Abfuhr","brown"),(q4,"⌕","Polter verwalten","Bestände & Karte","Polter verwalten","slate")]
+    quick=[(q1,hoiz_icon("mountain"),"Private Bereitstellung","Manuell erfassen","Bereitstellung erstellen","green"),(q2,hoiz_icon("import"),"PDF-Import","Bereitstellungen einlesen","Bereitstellung einlesen","blue"),(q3,hoiz_icon("truck"),"Abfuhr","Abfuhr erfassen","Abfuhr","brown"),(q4,hoiz_icon("search"),"Polter verwalten","Bestände & Karte","Polter verwalten","slate")]
     for col,icon,title,sub,page,tone in quick:
         with col:
             st.markdown(f"<div class='quick-tile {tone}'><div class='quick-icon'>{icon}</div><div><b>{title}</b><span>{sub}</span></div></div>",unsafe_allow_html=True)
@@ -2509,7 +2526,7 @@ if app_page == "Start":
     st.stop()
 
 if app_page == "Bereitstellung erstellen":
-    st.markdown("## ⛰ Private Bereitstellung")
+    st.markdown("## Private Bereitstellung")
     st.caption("Private Bauernpartie direkt in der Digitaler Hoizplotz anlegen.")
 
     if st.session_state.pop("_private_page_opened", False):
@@ -2528,7 +2545,7 @@ if app_page == "Bereitstellung erstellen":
     st.stop()
 
 if app_page == "Bereitstellung einlesen":
-    st.markdown("## ⇩ PDF-Import")
+    st.markdown("## PDF-Import")
     st.caption("PDF-Bereitstellungen wie bisher per Drag & Drop importieren.")
 
     with st.container(border=True):
@@ -2911,7 +2928,7 @@ if search.strip():
 
 
 if app_page == "Polter verwalten":
-    st.markdown("## ⌕ Polter verwalten")
+    st.markdown("## Polter verwalten")
     # Oben getrennte Kennzahlen für aktive und bereits abgefahrene Polter.
     counter_view = view.copy()
     counter_view["abfuhrstatus"] = counter_view.apply(berechne_abfuhrstatus, axis=1)
@@ -3588,7 +3605,7 @@ if app_page == "Polter verwalten":
     )
 
 if app_page == "Abfuhr":
-    st.markdown("## 🚚 Abfuhr")
+    st.markdown("## Abfuhr")
     st.caption("Polter über Filter, Auswahlfeld oder direkt über die Karte auswählen und eine Abfuhr anlegen.")
     left, right = st.columns([1.45, 1])
     with left:
