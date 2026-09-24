@@ -2360,126 +2360,112 @@ div[data-testid="stButton"] > button{transition:transform .12s ease,box-shadow .
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#eef1eb 0%,#dfe5e0 100%);border-right:1px solid rgba(23,52,38,.10)}
+[data-testid="stSidebar"] .stButton>button{justify-content:flex-start;text-align:left;border:0;background:transparent;color:#193226;box-shadow:none;padding:.62rem .72rem}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#376c43;color:white;border-radius:9px}.side-brand-sub{text-align:center;font-size:.68rem;letter-spacing:.19em;color:#647269;margin-top:-8px}.side-separator{height:1px;background:rgba(23,52,38,.12);margin:18px 0}.side-user{font-size:.76rem;color:#68766d;line-height:1.45;margin:14px 4px 8px}.subpage-brand{display:flex;align-items:baseline;gap:14px;padding:.35rem 0 1rem}.subpage-brand b{font-size:1.45rem;color:#173426}.subpage-brand span{font-size:.76rem;letter-spacing:.12em;color:#7a817c;text-transform:uppercase}
+.hoiz-hero{height:245px;border-radius:18px;background-size:cover;background-position:center;box-shadow:0 8px 30px rgba(28,52,39,.12);position:relative;overflow:hidden;margin-bottom:14px;border:1px solid rgba(40,70,50,.08)}.hero-copy{position:absolute;left:52px;top:27px}.hero-small{font-size:2rem;line-height:1;color:#315c46;font-weight:500}.hero-title{font-size:4.5rem;line-height:.95;font-weight:800;letter-spacing:-.055em;color:#6a3218}.hero-title span{color:#174d2a}.hero-line{width:210px;height:4px;background:#4c7e3c;margin:8px 0 13px;border-radius:4px}.hero-kicker{font-size:.82rem;letter-spacing:.28em;color:#253a30;font-weight:600}
+.dash-metric{min-height:126px;border-radius:15px;padding:18px;background:#fff;border:1px solid rgba(39,68,51,.10);box-shadow:0 5px 18px rgba(32,56,43,.06);position:relative}.dash-icon{position:absolute;left:17px;top:18px;width:47px;height:47px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.35rem;color:white}.dash-metric.green .dash-icon{background:#36783b}.dash-metric.brown .dash-icon{background:#8b5a34}.dash-metric.blue .dash-icon{background:#2e72ad}.dash-number{font-size:1.85rem;font-weight:800;color:#102c20;margin-left:62px}.dash-label{font-size:.98rem;color:#27382f;margin-left:62px}.dash-note{font-size:.72rem;color:#7b857f;margin-left:62px;margin-top:8px}.panel-heading{font-size:1.05rem;color:#142d22;padding:16px 13px 10px}.activity-box{background:#fff;border:1px solid rgba(39,68,51,.11);border-radius:13px;padding:4px 13px;min-height:430px;box-shadow:0 4px 15px rgba(32,56,43,.05)}.activity-line{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:13px 0;border-bottom:1px solid #edf0ed}.activity-line:last-child{border-bottom:0}.activity-circle{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff}.activity-circle.green{background:#34763b}.activity-circle.brown{background:#8a5934}.activity-circle.blue{background:#2e73ad}.activity-text{min-width:0;display:flex;flex-direction:column}.activity-text b{font-size:.82rem;color:#1d3027;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.activity-text span{font-size:.72rem;color:#7a847e;margin-top:3px}.activity-date{font-size:.67rem;color:#8a928d;white-space:nowrap}.activity-box.empty{display:flex;align-items:center;justify-content:center;color:#7d8881}.quick-heading{font-size:1.05rem;font-weight:750;color:#173426;margin:18px 0 8px}.quick-tile{min-height:82px;border-radius:13px;padding:15px;display:flex;align-items:center;gap:12px;border:1px solid rgba(39,68,51,.08)}.quick-tile.green{background:#f0f6ec}.quick-tile.blue{background:#eef5fb}.quick-tile.brown{background:#f8f0e8}.quick-tile.slate{background:#edf3f5}.quick-icon{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#315c46;color:#fff;font-size:1.3rem}.quick-tile.blue .quick-icon{background:#2d72ad}.quick-tile.brown .quick-icon{background:#8a5934}.quick-tile.slate .quick-icon{background:#405d67}.quick-tile b{display:block;color:#173426;font-size:.88rem}.quick-tile span{display:block;color:#758078;font-size:.71rem;margin-top:4px}
+@media(max-width:900px){.hoiz-hero{height:205px}.hero-copy{left:28px;top:28px}.hero-title{font-size:3.25rem}.hero-small{font-size:1.5rem}.activity-date{display:none}.dash-note{display:none}}
+</style>
+""", unsafe_allow_html=True)
+
 logo_path = APP_DIR / "digitaler_hoizplotz_logo.png"
+hero_path = APP_DIR / "digitaler_hoizplotz_hero.jpg"
 
-# Kopfbereich – auf allen Seiten identisch und bewusst kompakt.
-head_logo, head_brand, head_actions = st.columns([1.0, 6.7, 2.3], vertical_alignment="center")
-with head_logo:
+with st.sidebar:
     if logo_path.exists():
-        st.image(str(logo_path), width=104)
-    else:
-        st.markdown("<div style='font-size:3rem'>🪵</div>", unsafe_allow_html=True)
-with head_brand:
-    st.markdown("""
-    <div class="brand-shell">
-      <div class="brand-kicker">Rundholz digital verwalten</div>
-      <div class="brand-title">Digitaler Hoizplotz</div>
-      <div class="brand-sub">Bereitstellungen · Bestände · Abfuhr · Standorte</div>
-    </div>
-    """, unsafe_allow_html=True)
-with head_actions:
-    if app_page != "Start":
-        if st.button("⌂ Dashboard", key="go_home_top", use_container_width=True):
-            go_page("Start")
-            st.rerun()
-    if st.button("💾 Backup", key="open_backup_center", use_container_width=True):
-        backup_center()
+        st.image(str(logo_path), use_container_width=True)
+    st.markdown("<div class='side-brand-sub'>RUNDHOLZ DIGITAL VERWALTEN</div>", unsafe_allow_html=True)
+    nav_items = [("Start","⌂","Startseite"),("Polter verwalten","🪵","Polter verwalten"),("Bereitstellung erstellen","＋","Private Bereitstellung"),("Bereitstellung einlesen","▣","PDF-Import"),("Abfuhr","🚚","Abfuhr")]
+    for page, icon, label in nav_items:
+        if st.button(f"{icon}  {label}", key=f"side_nav_{page}", type="primary" if app_page == page else "secondary", use_container_width=True):
+            go_page(page); st.rerun()
+    st.markdown("<div class='side-separator'></div>", unsafe_allow_html=True)
+    if st.button("💾  Backup", key="side_backup", use_container_width=True): backup_center()
+    if SB:
+        st.markdown(f"<div class='side-user'>Angemeldet als<br><b>{current_user_email()}</b></div>", unsafe_allow_html=True)
+        if st.button("↪  Abmelden", key="logout_user", use_container_width=True): sign_out_user(); st.rerun()
 
-if SB:
-    user_col, logout_col = st.columns([8.4, 1.6], vertical_alignment="center")
-    with user_col:
-        st.caption(f"👤 {current_user_email()}  ·  ☁️ Daten synchronisiert")
-    with logout_col:
-        if st.button("Abmelden", key="logout_user", use_container_width=True):
-            sign_out_user()
-            st.rerun()
-else:
-    st.caption("🧪 Lokaler Testmodus")
+if app_page != "Start":
+    top_l, top_r = st.columns([8.4,1.6], vertical_alignment="center")
+    with top_l: st.markdown("<div class='subpage-brand'><b>Digitaler Hoizplotz</b><span>Rundholz digital verwalten</span></div>", unsafe_allow_html=True)
+    with top_r:
+        if st.button("⌂ Dashboard", key="go_home_top", use_container_width=True): go_page("Start"); st.rerun()
 
 if app_page == "Start":
-    # Dashboard nutzt ausschließlich bereits vorhandene Polter- und Abfuhrdaten.
     dash_df = df_all().copy()
     if not dash_df.empty:
         dash_df["status"] = dash_df.get("status", "").fillna("").replace({"Erledigt":"Abgefahren", "":"Offen"})
         rm_now = pd.to_numeric(dash_df.get("menge_rm_aktuell"), errors="coerce").fillna(0)
-        total_count = len(dash_df)
-        completed_count = int((dash_df["status"] == "Abgefahren").sum())
-        active_count = int((rm_now > 0.0005).sum())
-        private_count = int(dash_df.get("quelle_datei", pd.Series(index=dash_df.index, dtype=str)).fillna("").astype(str).str.contains("Private Bauernpartie", case=False, regex=False).sum())
-    else:
-        total_count = active_count = completed_count = private_count = 0
+        total_count=len(dash_df); completed_count=int((dash_df["status"]=="Abgefahren").sum()); active_count=int((rm_now>0.0005).sum())
+        private_count=int(dash_df.get("quelle_datei",pd.Series(index=dash_df.index,dtype=str)).fillna("").astype(str).str.contains("Private Bauernpartie",case=False,regex=False).sum())
+    else: total_count=active_count=completed_count=private_count=0
 
-    st.markdown('<div class="dash-section">Bestandsübersicht</div>', unsafe_allow_html=True)
-    m1,m2,m3,m4 = st.columns(4)
-    cards=[
-        (m1,"🪵",total_count,"Polter gesamt","Gesamter Datenbestand"),
-        (m2,"🌲",active_count,"Aktuell im Bestand","Offen oder teilweise abgefahren"),
-        (m3,"🚚",completed_count,"Abgefahren","Vollständig abgeschlossen"),
-        (m4,"📍",private_count,"Private Bereitstellungen","Manuell angelegte Polter"),
-    ]
-    for col,icon,val,label,note in cards:
-        with col:
-            st.markdown(f'<div class="metric-card"><div class="metric-icon">{icon}</div><div class="metric-value">{val}</div><div class="metric-label">{label}</div><div class="metric-note">{note}</div></div>', unsafe_allow_html=True)
+    hero_css=""
+    if hero_path.exists():
+        hero_b64=base64.b64encode(hero_path.read_bytes()).decode("ascii")
+        hero_css=f"background-image:linear-gradient(90deg,rgba(250,249,244,.97) 0%,rgba(250,249,244,.78) 38%,rgba(250,249,244,.05) 72%),url(data:image/jpeg;base64,{hero_b64});"
+    st.markdown(f'''<div class="hoiz-hero" style="{hero_css}"><div class="hero-copy"><div class="hero-small">Digitaler</div><div class="hero-title"><span>Hoiz</span>plotz</div><div class="hero-line"></div><div class="hero-kicker">RUNDHOLZ DIGITAL VERWALTEN</div></div></div>''', unsafe_allow_html=True)
 
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-    left,right = st.columns([1.15, .85], gap="large")
-    with left:
-        st.markdown('<div class="dash-section">Schnellzugriff</div>', unsafe_allow_html=True)
-        q1,q2 = st.columns(2)
-        with q1:
-            st.markdown('<div class="quick-card"><b>🌲 Bereitstellung erstellen</b><br><span style="font-size:.8rem;color:#758078">Private Bauernpartie direkt erfassen.</span></div>', unsafe_allow_html=True)
-            if st.button("Neue Bereitstellung", key="home_create", type="primary", use_container_width=True):
-                go_page("Bereitstellung erstellen"); st.rerun()
-            st.markdown('<div class="quick-card"><b>🗺️ Polter verwalten</b><br><span style="font-size:.8rem;color:#758078">Bestand, Filter und bestehende Karte.</span></div>', unsafe_allow_html=True)
-            if st.button("Polter verwalten", key="home_manage", use_container_width=True):
-                go_page("Polter verwalten"); st.rerun()
-        with q2:
-            st.markdown('<div class="quick-card"><b>📄 PDF importieren</b><br><span style="font-size:.8rem;color:#758078">Bereitstellungen automatisch einlesen.</span></div>', unsafe_allow_html=True)
-            if st.button("Bereitstellung einlesen", key="home_import", use_container_width=True):
-                go_page("Bereitstellung einlesen"); st.rerun()
-            st.markdown('<div class="quick-card"><b>🚚 Abfuhr erfassen</b><br><span style="font-size:.8rem;color:#758078">Mengen reduzieren und Abfuhr buchen.</span></div>', unsafe_allow_html=True)
-            if st.button("Abfuhr", key="home_abfuhr", use_container_width=True):
-                go_page("Abfuhr"); st.rerun()
+    m1,m2,m3,m4=st.columns(4,gap="small")
+    cards=[(m1,"🪵",total_count,"Polter gesamt","Gesamter Datenbestand","brown"),(m2,"🌲",active_count,"Aktuell im Bestand","Offen oder teilweise abgefahren","green"),(m3,"🚚",completed_count,"Abgefahren","Vollständig abgeschlossen","brown"),(m4,"📍",private_count,"Private Bereitstellungen","Manuell angelegte Polter","blue")]
+    for col,icon,val,label,note,tone in cards:
+        with col: st.markdown(f'<div class="dash-metric {tone}"><div class="dash-icon">{icon}</div><div class="dash-number">{val}</div><div class="dash-label">{label}</div><div class="dash-note">{note}</div></div>', unsafe_allow_html=True)
 
-    with right:
-        st.markdown('<div class="dash-section">Letzte Aktivitäten</div>', unsafe_allow_html=True)
+    map_col,act_col=st.columns([1.62,1.0],gap="medium")
+    with map_col:
+        st.markdown("<div class='panel-heading'>🗺️ <b>Polter auf der Karte</b></div>",unsafe_allow_html=True)
+        map_df=dash_df[~dash_df["status"].isin(["Abgefahren","Erledigt"])].copy() if not dash_df.empty else pd.DataFrame()
+        map_pts=map_df.dropna(subset=["lat","lon"]).copy() if not map_df.empty else pd.DataFrame()
+        if map_pts.empty: st.info("Aktuell sind keine offenen Polter mit Standort vorhanden.")
+        else:
+            suppliers=sorted([str(x) for x in map_pts["lieferant"].fillna("").unique().tolist() if str(x)])
+            palette=["#315C46","#7B8F3A","#A56A2A","#4F7F86","#7A6A5A","#3D6B4F","#8C5B3D","#6A8247","#5A6F78","#725F7D"]
+            colors={name:palette[i%len(palette)] for i,name in enumerate(suppliers)}
+            mp=folium.Map(location=[float(map_pts["lat"].mean()),float(map_pts["lon"].mean())],zoom_start=8,tiles="OpenStreetMap")
+            for _,r in map_pts.iterrows():
+                supplier=str(r.get("lieferant") or ""); liste=str(r.get("holzliste") or "-"); los=str(r.get("los") or "-"); polter=str(r.get("polter_nr") or "-")
+                pop=f"<b>{supplier or '-'}</b><br>Frächter: {r.get('fraechter') or '-'}<br>Bereitstellung: {r.get('bereitstellung') or '-'}<br>Liste: {liste}<br>Los: {los}<br>Polter: {polter}<br>Lagerort: {r.get('lagerort') or '-'}<br>Holzart: {r.get('holzart') or '-'} {r.get('sortiment') or ''}<br>RM aktuell: {r.get('menge_rm_aktuell') if pd.notna(r.get('menge_rm_aktuell')) else '-'}"
+                folium.Marker([float(r["lat"]),float(r["lon"])],tooltip=f"{supplier} · {r.get('bereitstellung') or ''} · Liste {liste} · Los {los} · Polter {polter}",popup=folium.Popup(pop,max_width=380),icon=folium.DivIcon(html=polter_pin_html(colors.get(supplier,"#3D6B4F"),size=38),icon_size=(38,46),icon_anchor=(19,46),class_name="polter-div-icon")).add_to(mp)
+            st_folium(mp,use_container_width=True,height=430,key="dashboard_polter_map",returned_objects=[])
+
+    with act_col:
+        st.markdown("<div class='panel-heading'>◷ <b>Letzte Aktivitäten</b></div>",unsafe_allow_html=True)
         activities=[]
-        # Abfuhren aus vorhandener Historie
-        try:
-            adf=df_abfuhren()
-        except Exception:
-            adf=pd.DataFrame()
-        polter_lookup={int(r["id"]): str(r.get("polter_nr") or "") for _,r in dash_df.dropna(subset=["id"]).iterrows()} if not dash_df.empty else {}
+        try: adf=df_abfuhren()
+        except Exception: adf=pd.DataFrame()
+        lookup={int(r["id"]):str(r.get("polter_nr") or "") for _,r in dash_df.dropna(subset=["id"]).iterrows()} if not dash_df.empty else {}
         if not adf.empty:
-            for _,r in adf.head(8).iterrows():
-                ts=pd.to_datetime(r.get("gebucht_am"), errors="coerce")
-                pid=int(r.get("polter_id")) if pd.notna(r.get("polter_id")) else 0
-                nr=polter_lookup.get(pid, str(pid))
-                rest=float(r.get("rest_rm") or 0)
-                title=f"Polter {nr} – {'Abfuhr abgeschlossen' if rest <= .0005 else 'Teilabfuhr erfasst'}"
-                sub=f"{float(r.get('abgefahren_rm') or 0):.1f} RM abgefahren"
-                activities.append((ts,"🚚",title,sub))
-        # Neu importierte / manuell erstellte Polter
+            for _,r in adf.head(12).iterrows():
+                ts=pd.to_datetime(r.get("gebucht_am"),errors="coerce",utc=True)
+                if pd.isna(ts): continue
+                pid=int(r.get("polter_id")) if pd.notna(r.get("polter_id")) else 0; nr=lookup.get(pid,str(pid)); rest=float(r.get("rest_rm") or 0)
+                activities.append((int(ts.value),ts,"🚚",f"Polter {nr} – {'Abfuhr abgeschlossen' if rest<=.0005 else 'Teilabfuhr erfasst'}",f"{float(r.get('abgefahren_rm') or 0):.1f} RM abgefahren","brown"))
         if not dash_df.empty:
-            recent=dash_df.copy()
-            recent["_ts"]=pd.to_datetime(recent.get("importiert_am"), errors="coerce")
-            for _,r in recent.sort_values("_ts",ascending=False).head(8).iterrows():
-                ts=r.get("_ts")
-                nr=str(r.get("polter_nr") or "")
-                private="Private Bauernpartie" in str(r.get("quelle_datei") or "")
-                activities.append((ts,"📍" if private else "📄",f"Polter {nr} – {'Privat erstellt' if private else 'Neu importiert'}",str(r.get("lieferant") or "")))
-        activities=[a for a in activities if pd.notna(a[0])]
+            for _,r in dash_df.iterrows():
+                ts=pd.to_datetime(r.get("importiert_am"),errors="coerce",utc=True)
+                if pd.isna(ts): continue
+                nr=str(r.get("polter_nr") or ""); private="Private Bauernpartie" in str(r.get("quelle_datei") or "")
+                activities.append((int(ts.value),ts,"📍" if private else "▣",f"Polter {nr} – {'Privat erstellt' if private else 'Neu importiert'}",str(r.get("lieferant") or ""),"blue" if private else "green"))
         activities=sorted(activities,key=lambda x:x[0],reverse=True)[:6]
         if activities:
             rows=[]
-            for ts,icon,title,sub in activities:
-                when=ts.strftime("%d.%m.%Y %H:%M")
-                rows.append(f'<div class="activity-row"><div class="activity-badge">{icon}</div><div class="activity-main"><div class="activity-title">{title}</div><div class="activity-sub">{sub}</div></div><div class="activity-time">{when}</div></div>')
-            st.markdown('<div class="activity-card">'+''.join(rows)+'</div>', unsafe_allow_html=True)
-        else:
-            st.info("Noch keine Aktivitäten vorhanden.")
+            for _,ts,icon,title,sub,tone in activities:
+                try: when=ts.tz_convert("Europe/Vienna").strftime("%d.%m.%Y  %H:%M")
+                except Exception: when=ts.strftime("%d.%m.%Y  %H:%M")
+                rows.append(f'<div class="activity-line"><div class="activity-circle {tone}">{icon}</div><div class="activity-text"><b>{title}</b><span>{sub}</span></div><div class="activity-date">{when}</div></div>')
+            st.markdown("<div class='activity-box'>"+"".join(rows)+"</div>",unsafe_allow_html=True)
+        else: st.markdown("<div class='activity-box empty'>Noch keine Aktivitäten vorhanden.</div>",unsafe_allow_html=True)
 
-    st.caption("Die bestehende Kartenansicht, Marker und Standortpunkte bleiben unverändert im Bereich „Polter verwalten“ bzw. „Abfuhr“.")
+    st.markdown("<div class='quick-heading'>Schnellzugriff</div>",unsafe_allow_html=True)
+    q1,q2,q3,q4=st.columns(4,gap="small")
+    quick=[(q1,"＋","Neuer Polter","Manuell erfassen","Bereitstellung erstellen","green"),(q2,"▣","PDF importieren","Bereitstellungen einlesen","Bereitstellung einlesen","blue"),(q3,"🚚","Abfuhr erfassen","Mengen reduzieren","Abfuhr","brown"),(q4,"🗺️","Karte öffnen","Polter verwalten","Polter verwalten","slate")]
+    for col,icon,title,sub,page,tone in quick:
+        with col:
+            st.markdown(f"<div class='quick-tile {tone}'><div class='quick-icon'>{icon}</div><div><b>{title}</b><span>{sub}</span></div></div>",unsafe_allow_html=True)
+            if st.button(title,key=f"dash_quick_{page}_{title}",use_container_width=True): go_page(page); st.rerun()
     st.stop()
 
 if app_page == "Bereitstellung erstellen":
