@@ -2522,6 +2522,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+st.markdown("""
+<style>
+/* Hero absolut klar und unverfälscht */
+.hoiz-hero{
+    opacity:1 !important;
+    filter:none !important;
+    -webkit-filter:none !important;
+    background-blend-mode:normal !important;
+}
+.hoiz-hero::before,
+.hoiz-hero::after{
+    display:none !important;
+    opacity:0 !important;
+    background:none !important;
+    background-image:none !important;
+    content:none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if app_page == "Start":
     dash_df = df_all().copy()
     if not dash_df.empty:
