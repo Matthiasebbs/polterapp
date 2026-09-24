@@ -2543,6 +2543,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+st.markdown("""
+<style>
+/* Dashboard näher an den oberen Rand */
+[data-testid="stMainBlockContainer"]{
+    padding-top:0.45rem !important;
+}
+.hoiz-hero{
+    margin-top:0 !important;
+    background-image:none;
+    background-size:contain !important;
+    background-position:center top !important;
+    background-repeat:no-repeat !important;
+    opacity:1 !important;
+    filter:none !important;
+    -webkit-filter:none !important;
+    background-blend-mode:normal !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if app_page == "Start":
     dash_df = df_all().copy()
     if not dash_df.empty:
@@ -2555,7 +2576,7 @@ if app_page == "Start":
     hero_css=""
     if hero_path.exists():
         hero_b64=base64.b64encode(hero_path.read_bytes()).decode("ascii")
-        hero_css=f"background-image:linear-gradient(90deg,rgba(250,249,244,.97) 0%,rgba(250,249,244,.78) 38%,rgba(250,249,244,.05) 72%),url(data:image/jpeg;base64,{hero_b64});"
+        hero_css=f"background-image:url(data:image/jpeg;base64,{hero_b64});"
     st.markdown(f'''<div class="hoiz-hero" style="{hero_css}"><div class="hero-copy"><div class="hero-small">Digitaler</div><div class="hero-title"><span>Hoiz</span>plotz</div><div class="hero-line"></div><div class="hero-kicker">RUNDHOLZ DIGITAL VERWALTEN</div></div></div>''', unsafe_allow_html=True)
 
     m1,m2,m3,m4=st.columns(4,gap="small")
