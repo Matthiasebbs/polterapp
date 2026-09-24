@@ -2564,6 +2564,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+st.markdown("""
+<style>
+/* Dashboard-Hero maximal nach oben */
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stMain"],
+.main{
+    padding-top:0 !important;
+    margin-top:0 !important;
+}
+[data-testid="stMainBlockContainer"],
+.block-container{
+    padding-top:0 !important;
+    margin-top:0 !important;
+}
+.hoiz-hero{
+    margin-top:-0.15rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if app_page == "Start":
     dash_df = df_all().copy()
     if not dash_df.empty:
