@@ -4,4 +4,5 @@ folium
 streamlit-folium
 pdfplumber
 supabase
-streamlit-cookies-manager-v2
+extra-streamlit-components
+cryptography
