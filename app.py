@@ -2389,7 +2389,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 logo_path = APP_DIR / "digitaler_hoizplotz_logo.png"
-hero_path = APP_DIR / "digitaler_hoizplotz_hero_panorama.jpg"
+hero_path = APP_DIR / "digitaler_hoizplotz_hero_final.jpg"
 
 # Die große Navigation erscheint nur am Dashboard.
 if app_page == "Start":
@@ -2490,6 +2490,37 @@ st.markdown('''
 .hoiz-hero .hero-kicker{display:none !important;}
 </style>
 ''', unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+/* FINALER DASHBOARD-HEADER: Bild vollständig, unverfälscht und ohne Overlay */
+.hoiz-hero{
+    height:auto !important;
+    min-height:0 !important;
+    aspect-ratio: 2.7777778 / 1 !important;
+    background-size:contain !important;
+    background-position:center center !important;
+    background-repeat:no-repeat !important;
+    background-color:transparent !important;
+    border-radius:18px !important;
+    box-shadow:0 8px 24px rgba(32,56,43,.10) !important;
+}
+.hoiz-hero::before,
+.hoiz-hero::after{
+    display:none !important;
+    content:none !important;
+}
+.hoiz-hero .hero-title,
+.hoiz-hero .hero-sub,
+.hoiz-hero .hero-brand,
+.hoiz-hero .hero-kicker,
+.hoiz-hero .hero-copy,
+.hoiz-hero .hero-overlay{
+    display:none !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 if app_page == "Start":
     dash_df = df_all().copy()
