@@ -2374,25 +2374,57 @@ st.markdown("""
 logo_path = APP_DIR / "digitaler_hoizplotz_logo.png"
 hero_path = APP_DIR / "digitaler_hoizplotz_hero.jpg"
 
-with st.sidebar:
-    if logo_path.exists():
-        st.image(str(logo_path), use_container_width=True)
-    st.markdown("<div class='side-brand-sub'>RUNDHOLZ DIGITAL VERWALTEN</div>", unsafe_allow_html=True)
-    nav_items = [("Start","⌂","Startseite"),("Polter verwalten","🪵","Polter verwalten"),("Bereitstellung erstellen","＋","Private Bereitstellung"),("Bereitstellung einlesen","▣","PDF-Import"),("Abfuhr","🚚","Abfuhr")]
-    for page, icon, label in nav_items:
-        if st.button(f"{icon}  {label}", key=f"side_nav_{page}", type="primary" if app_page == page else "secondary", use_container_width=True):
-            go_page(page); st.rerun()
-    st.markdown("<div class='side-separator'></div>", unsafe_allow_html=True)
-    if st.button("💾  Backup", key="side_backup", use_container_width=True): backup_center()
+# Die große Navigation erscheint nur am Dashboard.
+if app_page == "Start":
+    with st.sidebar:
+        if logo_path.exists():
+            st.image(str(logo_path), use_container_width=True)
+        st.markdown("<div class='side-brand-sub'>RUNDHOLZ DIGITAL VERWALTEN</div>", unsafe_allow_html=True)
+        nav_items = [("Start","⌂","Startseite"),("Polter verwalten","🪵","Polter verwalten"),("Bereitstellung erstellen","＋","Private Bereitstellung"),("Bereitstellung einlesen","▣","PDF-Import"),("Abfuhr","🚚","Abfuhr")]
+        for page, icon, label in nav_items:
+            if st.button(f"{icon}  {label}", key=f"side_nav_{page}", type="primary" if app_page == page else "secondary", use_container_width=True):
+                go_page(page); st.rerun()
+        st.markdown("<div class='side-separator'></div>", unsafe_allow_html=True)
+        if st.button("💾  Backup", key="side_backup", use_container_width=True):
+            backup_center()
+        if SB:
+            st.markdown(f"<div class='side-user'>Angemeldet als<br><b>{current_user_email()}</b></div>", unsafe_allow_html=True)
+            if st.button("↪  Abmelden", key="logout_user", use_container_width=True):
+                sign_out_user(); st.rerun()
+else:
+    st.markdown("""
+    <style>
+    section[data-testid="stSidebar"] {display:none !important;}
+    [data-testid="stSidebarCollapsedControl"] {display:none !important;}
+    .block-container {max-width:100% !important;padding-left:2rem !important;padding-right:2rem !important;padding-top:.8rem !important;}
+    .work-brand{display:flex;align-items:center;gap:14px;min-height:68px}
+    .work-brand-logo{width:62px;height:62px;object-fit:contain;border-radius:13px}
+    .work-brand-title{font-size:1.72rem;font-weight:800;color:#173426;letter-spacing:-.035em;line-height:1}
+    .work-brand-sub{font-size:.7rem;color:#708b61;letter-spacing:.18em;font-weight:700;margin-top:6px}
+    </style>
+    """, unsafe_allow_html=True)
+    top_brand, top_actions = st.columns([7.6,2.4], vertical_alignment="center")
+    with top_brand:
+        if logo_path.exists():
+            logo_b64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+            st.markdown(f"""<div class="work-brand"><img class="work-brand-logo" src="data:image/png;base64,{logo_b64}"><div><div class="work-brand-title">Digitaler Hoizplotz</div><div class="work-brand-sub">RUNDHOLZ DIGITAL VERWALTEN</div></div></div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""<div class="work-brand"><div style="font-size:2.5rem">🪵</div><div><div class="work-brand-title">Digitaler Hoizplotz</div><div class="work-brand-sub">RUNDHOLZ DIGITAL VERWALTEN</div></div></div>""", unsafe_allow_html=True)
+    with top_actions:
+        a1, a2 = st.columns(2)
+        with a1:
+            if st.button("⌂ Dashboard", key="go_home_top", use_container_width=True):
+                go_page("Start"); st.rerun()
+        with a2:
+            if st.button("💾 Backup", key="work_backup", use_container_width=True):
+                backup_center()
     if SB:
-        st.markdown(f"<div class='side-user'>Angemeldet als<br><b>{current_user_email()}</b></div>", unsafe_allow_html=True)
-        if st.button("↪  Abmelden", key="logout_user", use_container_width=True): sign_out_user(); st.rerun()
-
-if app_page != "Start":
-    top_l, top_r = st.columns([8.4,1.6], vertical_alignment="center")
-    with top_l: st.markdown("<div class='subpage-brand'><b>Digitaler Hoizplotz</b><span>Rundholz digital verwalten</span></div>", unsafe_allow_html=True)
-    with top_r:
-        if st.button("⌂ Dashboard", key="go_home_top", use_container_width=True): go_page("Start"); st.rerun()
+        user_c, logout_c = st.columns([8.7,1.3], vertical_alignment="center")
+        with user_c:
+            st.caption(f"Angemeldet als {current_user_email()}")
+        with logout_c:
+            if st.button("↪ Abmelden", key="work_logout", use_container_width=True):
+                sign_out_user(); st.rerun()
 
 if app_page == "Start":
     dash_df = df_all().copy()
