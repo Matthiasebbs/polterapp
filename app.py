@@ -2421,7 +2421,7 @@ else:
     with top_actions:
         a1, a2 = st.columns(2)
         with a1:
-            if st.button("⌂ Dashboard", key="go_home_top", use_container_width=True):
+            if st.button("⌂ Dashboard", key="go_home_top", type="primary", use_container_width=True):
                 go_page("Start"); st.rerun()
         with a2:
             if st.button("💾 Backup", key="work_backup", use_container_width=True):
@@ -2650,10 +2650,9 @@ def reset_filters():
         st.session_state.pop(key, None)
 
 with st.sidebar:
-    st.markdown('<div class="filter-kicker">🌲 Forstverwaltung</div>', unsafe_allow_html=True)
-    st.markdown('<div class="filter-title">Bestand filtern</div>', unsafe_allow_html=True)
+    st.markdown('<div class="filter-title">🌲 Hoizplotzfilter</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="filter-subtitle">Polterbestand nach Partner, Sortiment und Abfuhrstatus eingrenzen.</div>',
+        '<div class="filter-subtitle">Polter nach Partner, Sortiment und Abfuhrstatus filtern.</div>',
         unsafe_allow_html=True
     )
 
