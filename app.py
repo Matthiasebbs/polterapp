@@ -922,7 +922,7 @@ except Exception:
 APP_DIR = Path(__file__).parent
 DB_PATH = APP_DIR / "polter.db"
 
-st.set_page_config(page_title="Polter-Zentrale", page_icon="🪵", layout="wide")
+st.set_page_config(page_title="Digitaler Hoizplotz", page_icon="🪵", layout="wide")
 
 st.markdown("""
 <style>
@@ -2027,7 +2027,7 @@ def backup_center():
             margin-bottom:.9rem;
             color:#294735;
         ">
-            <b>Datensicherung der Polter-Zentrale</b><br>
+            <b>Datensicherung der Digitaler Hoizplotz</b><br>
             Backup erstellen, herunterladen oder einen früheren Datenstand wiederherstellen.
         </div>
         """,
@@ -2061,7 +2061,7 @@ def backup_center():
             ).encode("utf-8")
 
             info_text = (
-                "Polter-Zentrale Datensicherung\n"
+                "Digitaler Hoizplotz Datensicherung\n"
                 f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
                 f"Anzahl Polter-Datensätze: {len(backup_df)}\n"
                 "Enthalten: Polter + Abfuhrhistorie, jeweils als CSV + JSON\n"
@@ -2102,7 +2102,7 @@ def backup_center():
         )
         st.caption(
             "Empfehlung: Speichere alle Sicherungen im gleichen Ordner, "
-            "z. B. Dokumente → Polter-Zentrale → Backups."
+            "z. B. Dokumente → Digitaler Hoizplotz → Backups."
         )
 
     st.markdown("---")
@@ -2249,7 +2249,7 @@ def backup_center():
         except Exception:
             st.error(
                 "Das Backup konnte nicht gelesen oder wiederhergestellt werden. "
-                "Bitte prüfe, ob es aus der Polter-Zentrale stammt."
+                "Bitte prüfe, ob es aus der Digitaler Hoizplotz stammt."
             )
 
 
@@ -2268,7 +2268,7 @@ if AUTH_SB:
     restore_auth_session()
 
 if AUTH_SB and not current_user_id():
-    st.title("🪵 Polter-Zentrale")
+    st.title("🪵 Digitaler Hoizplotz")
     st.markdown("""
     <div class="forest-header">
         <div class="forest-header-icon">🌲</div>
@@ -2329,7 +2329,7 @@ def polter_pin_html(color, size=42):
 
 
 # ============================================================
-# NEUER APP-AUFBAU / STARTBILDSCHIRM
+# DIGITALER HOIZPLOTZ – NAVIGATION / DASHBOARD
 # ============================================================
 if "app_page" not in st.session_state:
     st.session_state["app_page"] = "Start"
@@ -2343,87 +2343,148 @@ def go_page(page):
     if page == "Bereitstellung erstellen":
         st.session_state["_private_page_opened"] = True
 
-if app_page == "Start":
-    title_col, backup_col = st.columns([8.5, 1.5], vertical_alignment="center")
-    with title_col:
-        st.title("🪵 Polter-Zentrale")
-    with backup_col:
-        if st.button("💾 Backup", key="open_backup_center", use_container_width=True):
-            backup_center()
-else:
-    title_col, home_col, backup_col = st.columns([7.2, 1.35, 1.45], vertical_alignment="center")
-    with title_col:
-        st.title("🪵 Polter-Zentrale")
-    with home_col:
-        if st.button("⌂ Start", key="go_home_top", use_container_width=True):
-            go_page("Start")
-            st.rerun()
-    with backup_col:
-        if st.button("💾 Backup", key="open_backup_center", use_container_width=True):
-            backup_center()
-
+# Zusätzliche Designschicht. Fachlogik, Karten und Marker bleiben unverändert.
 st.markdown("""
-<div class="forest-header">
-    <div class="forest-header-icon">🌲</div>
-    <div>
-        <div class="forest-header-title">Digitale Polterverwaltung</div>
-        <div class="forest-header-sub">Bereitstellungen · Bestände · Abfuhr · Standorte</div>
-    </div>
-</div>
+<style>
+.brand-shell{background:linear-gradient(135deg,#fbfaf5 0%,#eef2e8 100%);border:1px solid rgba(36,73,53,.12);border-radius:22px;padding:18px 22px;margin:2px 0 18px;box-shadow:0 10px 28px rgba(24,52,38,.08)}
+.brand-kicker{font-size:.78rem;letter-spacing:.22em;text-transform:uppercase;color:#708b61;font-weight:700;margin-bottom:2px}
+.brand-title{font-size:2.15rem;line-height:1.02;font-weight:800;color:#173426;letter-spacing:-.04em;margin:0}
+.brand-sub{font-size:.93rem;color:#6b776f;margin-top:7px;letter-spacing:.04em}
+.dash-section{font-size:1.12rem;font-weight:750;color:#173426;margin:6px 0 10px}
+.metric-card{border:1px solid rgba(36,73,53,.11);border-radius:16px;padding:16px 17px;background:#fff;min-height:112px;box-shadow:0 5px 18px rgba(24,52,38,.055)}
+.metric-icon{font-size:1.45rem;margin-bottom:5px}.metric-value{font-size:1.75rem;font-weight:800;color:#173426;line-height:1}.metric-label{font-size:.88rem;color:#5f6e65;margin-top:6px}.metric-note{font-size:.72rem;color:#8a958e;margin-top:5px}
+.activity-card{border:1px solid rgba(36,73,53,.11);border-radius:16px;background:#fff;padding:7px 16px;box-shadow:0 5px 18px rgba(24,52,38,.05)}
+.activity-row{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid rgba(36,73,53,.08)}.activity-row:last-child{border-bottom:none}.activity-badge{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#eef4ea;font-size:1rem;flex:0 0 34px}.activity-main{flex:1}.activity-title{font-weight:700;color:#25372d;font-size:.9rem}.activity-sub{font-size:.76rem;color:#7b877f;margin-top:1px}.activity-time{font-size:.73rem;color:#8b968f;white-space:nowrap}
+.quick-card{border:1px solid rgba(36,73,53,.10);border-radius:16px;padding:12px 14px;background:linear-gradient(135deg,#fff,#f6f8f3);margin-bottom:8px}
+div[data-testid="stButton"] > button{transition:transform .12s ease,box-shadow .12s ease}div[data-testid="stButton"] > button:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(24,52,38,.10)}
+</style>
 """, unsafe_allow_html=True)
 
+logo_path = APP_DIR / "digitaler_hoizplotz_logo.png"
+
+# Kopfbereich – auf allen Seiten identisch und bewusst kompakt.
+head_logo, head_brand, head_actions = st.columns([1.0, 6.7, 2.3], vertical_alignment="center")
+with head_logo:
+    if logo_path.exists():
+        st.image(str(logo_path), width=104)
+    else:
+        st.markdown("<div style='font-size:3rem'>🪵</div>", unsafe_allow_html=True)
+with head_brand:
+    st.markdown("""
+    <div class="brand-shell">
+      <div class="brand-kicker">Rundholz digital verwalten</div>
+      <div class="brand-title">Digitaler Hoizplotz</div>
+      <div class="brand-sub">Bereitstellungen · Bestände · Abfuhr · Standorte</div>
+    </div>
+    """, unsafe_allow_html=True)
+with head_actions:
+    if app_page != "Start":
+        if st.button("⌂ Dashboard", key="go_home_top", use_container_width=True):
+            go_page("Start")
+            st.rerun()
+    if st.button("💾 Backup", key="open_backup_center", use_container_width=True):
+        backup_center()
+
 if SB:
-    user_col, logout_col = st.columns([8.5, 1.5], vertical_alignment="center")
+    user_col, logout_col = st.columns([8.4, 1.6], vertical_alignment="center")
     with user_col:
-        st.caption(f"👤 Angemeldet: {current_user_email()}")
+        st.caption(f"👤 {current_user_email()}  ·  ☁️ Daten synchronisiert")
     with logout_col:
         if st.button("Abmelden", key="logout_user", use_container_width=True):
             sign_out_user()
             st.rerun()
-    st.success("☁️ LIVE: Supabase verbunden – deine Polter, Mengen, Status und Notizen werden dauerhaft gespeichert.")
 else:
-    st.warning("🧪 Lokaler Testmodus. Für die veröffentlichte Web-App Supabase verbinden.")
+    st.caption("🧪 Lokaler Testmodus")
 
 if app_page == "Start":
-    st.markdown("## Was möchtest du machen?")
-    st.caption("Wähle einen Bereich der Polter-Zentrale.")
+    # Dashboard nutzt ausschließlich bereits vorhandene Polter- und Abfuhrdaten.
+    dash_df = df_all().copy()
+    if not dash_df.empty:
+        dash_df["status"] = dash_df.get("status", "").fillna("").replace({"Erledigt":"Abgefahren", "":"Offen"})
+        rm_now = pd.to_numeric(dash_df.get("menge_rm_aktuell"), errors="coerce").fillna(0)
+        total_count = len(dash_df)
+        completed_count = int((dash_df["status"] == "Abgefahren").sum())
+        active_count = int((rm_now > 0.0005).sum())
+        private_count = int(dash_df.get("quelle_datei", pd.Series(index=dash_df.index, dtype=str)).fillna("").astype(str).str.contains("Private Bauernpartie", case=False, regex=False).sum())
+    else:
+        total_count = active_count = completed_count = private_count = 0
 
-    c1, c2 = st.columns(2)
-    with c1:
-        with st.container(border=True):
-            st.markdown("### 🌲 Bereitstellung erstellen")
-            st.caption("Private Bauernpartie direkt und ohne PDF anlegen.")
-            if st.button("Bereitstellung erstellen", key="home_create", type="primary", use_container_width=True):
-                go_page("Bereitstellung erstellen")
-                st.rerun()
+    st.markdown('<div class="dash-section">Bestandsübersicht</div>', unsafe_allow_html=True)
+    m1,m2,m3,m4 = st.columns(4)
+    cards=[
+        (m1,"🪵",total_count,"Polter gesamt","Gesamter Datenbestand"),
+        (m2,"🌲",active_count,"Aktuell im Bestand","Offen oder teilweise abgefahren"),
+        (m3,"🚚",completed_count,"Abgefahren","Vollständig abgeschlossen"),
+        (m4,"📍",private_count,"Private Bereitstellungen","Manuell angelegte Polter"),
+    ]
+    for col,icon,val,label,note in cards:
+        with col:
+            st.markdown(f'<div class="metric-card"><div class="metric-icon">{icon}</div><div class="metric-value">{val}</div><div class="metric-label">{label}</div><div class="metric-note">{note}</div></div>', unsafe_allow_html=True)
 
-        with st.container(border=True):
-            st.markdown("### 🗺️ Polter verwalten")
-            st.caption("Dashboard mit Bestand, Karte, Bereitstellungen und Polterübersicht.")
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    left,right = st.columns([1.15, .85], gap="large")
+    with left:
+        st.markdown('<div class="dash-section">Schnellzugriff</div>', unsafe_allow_html=True)
+        q1,q2 = st.columns(2)
+        with q1:
+            st.markdown('<div class="quick-card"><b>🌲 Bereitstellung erstellen</b><br><span style="font-size:.8rem;color:#758078">Private Bauernpartie direkt erfassen.</span></div>', unsafe_allow_html=True)
+            if st.button("Neue Bereitstellung", key="home_create", type="primary", use_container_width=True):
+                go_page("Bereitstellung erstellen"); st.rerun()
+            st.markdown('<div class="quick-card"><b>🗺️ Polter verwalten</b><br><span style="font-size:.8rem;color:#758078">Bestand, Filter und bestehende Karte.</span></div>', unsafe_allow_html=True)
             if st.button("Polter verwalten", key="home_manage", use_container_width=True):
-                go_page("Polter verwalten")
-                st.rerun()
-
-    with c2:
-        with st.container(border=True):
-            st.markdown("### 📄 Bereitstellung einlesen")
-            st.caption("Bereitstellungs-PDFs per Drag & Drop importieren.")
+                go_page("Polter verwalten"); st.rerun()
+        with q2:
+            st.markdown('<div class="quick-card"><b>📄 PDF importieren</b><br><span style="font-size:.8rem;color:#758078">Bereitstellungen automatisch einlesen.</span></div>', unsafe_allow_html=True)
             if st.button("Bereitstellung einlesen", key="home_import", use_container_width=True):
-                go_page("Bereitstellung einlesen")
-                st.rerun()
-
-        with st.container(border=True):
-            st.markdown("### 🚚 Abfuhr")
-            st.caption("Polter auswählen, Restmengen ändern, Abfuhr buchen und Koordinaten pflegen.")
+                go_page("Bereitstellung einlesen"); st.rerun()
+            st.markdown('<div class="quick-card"><b>🚚 Abfuhr erfassen</b><br><span style="font-size:.8rem;color:#758078">Mengen reduzieren und Abfuhr buchen.</span></div>', unsafe_allow_html=True)
             if st.button("Abfuhr", key="home_abfuhr", use_container_width=True):
-                go_page("Abfuhr")
-                st.rerun()
+                go_page("Abfuhr"); st.rerun()
 
+    with right:
+        st.markdown('<div class="dash-section">Letzte Aktivitäten</div>', unsafe_allow_html=True)
+        activities=[]
+        # Abfuhren aus vorhandener Historie
+        try:
+            adf=df_abfuhren()
+        except Exception:
+            adf=pd.DataFrame()
+        polter_lookup={int(r["id"]): str(r.get("polter_nr") or "") for _,r in dash_df.dropna(subset=["id"]).iterrows()} if not dash_df.empty else {}
+        if not adf.empty:
+            for _,r in adf.head(8).iterrows():
+                ts=pd.to_datetime(r.get("gebucht_am"), errors="coerce")
+                pid=int(r.get("polter_id")) if pd.notna(r.get("polter_id")) else 0
+                nr=polter_lookup.get(pid, str(pid))
+                rest=float(r.get("rest_rm") or 0)
+                title=f"Polter {nr} – {'Abfuhr abgeschlossen' if rest <= .0005 else 'Teilabfuhr erfasst'}"
+                sub=f"{float(r.get('abgefahren_rm') or 0):.1f} RM abgefahren"
+                activities.append((ts,"🚚",title,sub))
+        # Neu importierte / manuell erstellte Polter
+        if not dash_df.empty:
+            recent=dash_df.copy()
+            recent["_ts"]=pd.to_datetime(recent.get("importiert_am"), errors="coerce")
+            for _,r in recent.sort_values("_ts",ascending=False).head(8).iterrows():
+                ts=r.get("_ts")
+                nr=str(r.get("polter_nr") or "")
+                private="Private Bauernpartie" in str(r.get("quelle_datei") or "")
+                activities.append((ts,"📍" if private else "📄",f"Polter {nr} – {'Privat erstellt' if private else 'Neu importiert'}",str(r.get("lieferant") or "")))
+        activities=[a for a in activities if pd.notna(a[0])]
+        activities=sorted(activities,key=lambda x:x[0],reverse=True)[:6]
+        if activities:
+            rows=[]
+            for ts,icon,title,sub in activities:
+                when=ts.strftime("%d.%m.%Y %H:%M")
+                rows.append(f'<div class="activity-row"><div class="activity-badge">{icon}</div><div class="activity-main"><div class="activity-title">{title}</div><div class="activity-sub">{sub}</div></div><div class="activity-time">{when}</div></div>')
+            st.markdown('<div class="activity-card">'+''.join(rows)+'</div>', unsafe_allow_html=True)
+        else:
+            st.info("Noch keine Aktivitäten vorhanden.")
+
+    st.caption("Die bestehende Kartenansicht, Marker und Standortpunkte bleiben unverändert im Bereich „Polter verwalten“ bzw. „Abfuhr“.")
     st.stop()
 
 if app_page == "Bereitstellung erstellen":
     st.markdown("## 🌲 Bereitstellung erstellen")
-    st.caption("Private Bauernpartie direkt in der Polter-Zentrale anlegen.")
+    st.caption("Private Bauernpartie direkt in der Digitaler Hoizplotz anlegen.")
 
     if st.session_state.pop("_private_page_opened", False):
         private_bereitstellung_dialog()
