@@ -2389,7 +2389,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 logo_path = APP_DIR / "digitaler_hoizplotz_logo.png"
-hero_path = APP_DIR / "digitaler_hoizplotz_hero.jpg"
+hero_path = APP_DIR / "digitaler_hoizplotz_hero_neu.jpg"
 
 # Die große Navigation erscheint nur am Dashboard.
 if app_page == "Start":
@@ -2455,17 +2455,18 @@ else:
 st.markdown('''
 <style>
 .hoiz-hero{
-    background-size:100% 100% !important;
+    background-size:cover !important;
     background-position:center center !important;
     background-repeat:no-repeat !important;
-    height:285px !important;
+    height:238px !important;
+    border-radius:18px !important;
 }
 .dash-metric,
 .dash-metric.green,
 .dash-metric.brown,
 .dash-metric.blue{
-    background:linear-gradient(145deg,#eef5ec 0%,#e3eee0 100%) !important;
-    border:1px solid #c8d9c5 !important;
+    background:linear-gradient(145deg,#f5f9f2 0%,#edf5e9 100%) !important;
+    border:1px solid #d5e2d1 !important;
     box-shadow:0 5px 16px rgba(45,78,54,.07) !important;
 }
 .dash-metric .dash-icon,
