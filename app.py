@@ -2585,6 +2585,31 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+st.markdown("""
+<style>
+.dashboard-clean-head{
+    padding:.7rem 0 1rem 0;
+    border-bottom:1px solid #dbe5d8;
+    margin-bottom:1.15rem;
+}
+.dashboard-clean-title{
+    font-size:2.15rem;
+    line-height:1;
+    font-weight:800;
+    letter-spacing:-.045em;
+    color:#173426;
+}
+.dashboard-clean-sub{
+    margin-top:.55rem;
+    font-size:.72rem;
+    font-weight:700;
+    letter-spacing:.20em;
+    color:#71866f;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if app_page == "Start":
     dash_df = df_all().copy()
     if not dash_df.empty:
@@ -2598,7 +2623,12 @@ if app_page == "Start":
     if hero_path.exists():
         hero_b64=base64.b64encode(hero_path.read_bytes()).decode("ascii")
         hero_css=f"background-image:url(data:image/jpeg;base64,{hero_b64});"
-    st.markdown(f'''<div class="hoiz-hero" style="{hero_css}"><div class="hero-copy"><div class="hero-small">Digitaler</div><div class="hero-title"><span>Hoiz</span>plotz</div><div class="hero-line"></div><div class="hero-kicker">RUNDHOLZ DIGITAL VERWALTEN</div></div></div>''', unsafe_allow_html=True)
+    st.markdown('''
+    <div class="dashboard-clean-head">
+      <div class="dashboard-clean-title">Digitaler Hoizplotz</div>
+      <div class="dashboard-clean-sub">RUNDHOLZ DIGITAL VERWALTEN</div>
+    </div>
+    ''', unsafe_allow_html=True)
 
     m1,m2,m3,m4=st.columns(4,gap="small")
     cards=[(m1,hoiz_icon("polter"),total_count,"Polter gesamt","Gesamter Datenbestand","brown"),(m2,hoiz_icon("tree"),active_count,"Aktuell im Bestand","Offen oder teilweise abgefahren","green"),(m3,hoiz_icon("truck"),completed_count,"Abgefahren","Vollständig abgeschlossen","brown"),(m4,hoiz_icon("mountain"),private_count,"Private Bereitstellungen","Manuell angelegte Polter","blue")]
