@@ -1773,11 +1773,36 @@ def private_bereitstellung_dialog():
         unsafe_allow_html=True
     )
 
-    supplier = st.text_input(
+    # ---------------- Lieferant mit Vorschlägen ----------------
+    # Genau wie beim Frächter: vorhandene Lieferanten werden beim Tippen
+    # vorgeschlagen, neue Lieferanten können weiterhin frei eingegeben werden.
+    try:
+        supplier_df = df_all()
+        known_suppliers = sorted(
+            {
+                str(x).strip()
+                for x in supplier_df.get("lieferant", pd.Series(dtype=str)).fillna("").tolist()
+                if str(x).strip()
+                and str(x).strip().casefold() != "nicht angegeben"
+            },
+            key=str.casefold
+        )
+    except Exception:
+        known_suppliers = []
+
+    supplier = st.selectbox(
         "Lieferant",
+        options=known_suppliers,
+        index=None,
         key="private_supplier",
-        placeholder="z. B. Huber Franz"
+        placeholder="Lieferant eingeben oder auswählen",
+        accept_new_options=True,
+        help=(
+            "Tippe einen Teil des Namens ein. Die App durchsucht die bereits "
+            "gespeicherten Lieferanten. Neue Namen können ebenfalls eingegeben werden."
+        )
     )
+    supplier = str(supplier or "").strip()
 
     auto_polter_nr = next_private_polter_number(supplier) if supplier.strip() else ""
     if supplier.strip() and len(private_supplier_code(supplier)) < 4:
