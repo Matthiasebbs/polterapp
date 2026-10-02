@@ -368,9 +368,18 @@ def parse_wbv_traunstein(pages, filename):
     date = re.search(r"Bereitstellungsdatum:\s*(\d{2}\.\d{2}\.\d{4})", first, re.I)
     contract = re.search(r"Vertrag:\s*([^\n]+)", first, re.I)
 
-    # z. B. B_Hunglinger_50038 -> Hunglinger
+    # Frächter aus dem Kopf der WBV-Traunstein-Bereitstellung.
+    # Unterstützt z. B.:
+    #   B_Hunglinger_50038 -> Hunglinger
+    #   G&H_50039          -> G&H
     carrier = ""
-    cm = re.search(r"\bB_([A-Za-zÄÖÜäöüß&.'-]+)_\d+\b", first)
+    cm = (
+        re.search(r"\bB_([A-Za-zÄÖÜäöüß&.'-]+)_\d+\b", first)
+        or re.search(
+            r"(?m)^\s*\S+_\d+\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß&.' -]*?)_\d+\s+[^\n]*Bereitstellungsdatum:",
+            first
+        )
+    )
     if cm:
         carrier = cm.group(1).strip()
 
