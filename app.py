@@ -360,7 +360,8 @@ def parse_wbv_traunstein(pages, filename):
 
     nr = (
         re.search(r"Bereitstellungsnummer:[ \t]*([A-Z0-9_\-]+)", first, re.I)
-        or re.search(r"(?m)^(BM-\d{2}-\d{4}_[A-Za-z0-9_-]+)\s*$", first)
+        or re.search(r"(?m)^\s*(BM-\d{2}-\d{4}(?:_[A-Za-z0-9&.-]+)?)\s*$", first, re.I)
+        or re.search(r"\b(BM-\d{2}-\d{4})\b", first, re.I)
     )
     if not nr:
         return []
