@@ -528,7 +528,7 @@ def parse_fbg_isar_lech(pages, filename):
     if "Bereitstellung BA-" not in first:
         return []
 
-    nr = re.search(r"Bereitstellung\s+(BA-\d+)", first, re.I)
+    nr = re.search(r"Bereitstellung\s+(BA-\d+(?:-\d+)*)", first, re.I)
     if not nr:
         return []
 
@@ -578,6 +578,72 @@ def parse_fbg_isar_lech(pages, filename):
     gps_pair_re = re.compile(
         r"^(?P<lat>\d{1,2},\d{5,8})\s+(?P<lon>\d{1,3},\d{5,8})$"
     )
+
+    # Neues FBG-Tabellenlayout (z. B. BA-27-68):
+    # Mengen und Koordinaten stehen in der PDF-Textschicht VOR der
+    # zugehörigen Polterzeile; die Einheit m.R. folgt DANACH.
+    # Der bisherige Parser bleibt für ältere Layouts erhalten.
+    pre_amount_re = re.compile(
+        r"^(?P<rm>\d+(?:[.,]\d+)?)\s+Rm\s+"
+        r"(?P<fm>\d+(?:[.,]\d+)?)\s+"
+        r"(?P<lat>\d{1,2}[.,]\d{4,8})\s+"
+        r"(?P<lon>\d{1,3}[.,]\d{4,8})(?:\s|$)", re.I
+    )
+    bare_polter_re = re.compile(
+        r"^(?P<liste>\d+)\s+(?P<los>\d+)\s+"
+        r"(?P<polter>\d+(?:\.\d+)?)\s+"
+        r"(?P<sort>[A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß0-9.]+)+)\s+"
+        r"(?P<stck>\d+)\s*$"
+    )
+    prefixed_rows = []
+    for idx in range(len(lines) - 1):
+        amount_match = pre_amount_re.match(lines[idx])
+        polter_match = bare_polter_re.match(lines[idx + 1])
+        if not amount_match or not polter_match:
+            continue
+        d = polter_match.groupdict()
+        amt = amount_match.groupdict()
+        parts = d["sort"].split("-")
+        length = None
+        for token in reversed(parts):
+            try:
+                value = float(token)
+                if 1 <= value <= 12:
+                    length = value
+                    break
+            except ValueError:
+                pass
+        prefixed_rows.append({
+            "liste": d["liste"], "los": d["los"], "polter": d["polter"],
+            "sortiment": d["sort"], "holzart": parts[0],
+            "laenge": length, "stueck": int(d["stck"]),
+            "rm": n(amt["rm"]),
+            "fm": round(n(amt["rm"]) / 1.5, 3),
+            "lat": n(amt["lat"]), "lon": n(amt["lon"]),
+        })
+    if prefixed_rows:
+        # Bewusst dieselbe Mengenregel und dieselbe Datensatzstruktur
+        # wie im bisherigen FBG-Parser verwenden.
+        result = []
+        for rr in prefixed_rows:
+            pnr = rr["polter"]
+            note_match = re.search(rf"(?mi)^P{re.escape(str(pnr))}:\s*(.+)$", first)
+            r = empty(filename)
+            r.update(
+                bereitstellung=nr.group(1), lieferant="FBG Isar-Lech",
+                vertragsnummer=contract.group(1).strip() if contract else "",
+                datum=date.group(1).strip() if date else "",
+                holzliste=rr["liste"], los=rr["los"], polter_nr=pnr,
+                holzart=rr["holzart"], sortiment=rr["sortiment"],
+                laenge_m=rr["laenge"], stueck=rr["stueck"],
+                einheit="RM / FM", lat=rr["lat"], lon=rr["lon"],
+                waldort=revier.group(1).strip() if revier else "",
+                bemerkung=note_match.group(1).strip() if note_match else "",
+                ansprechpartner=ap.group(1).strip() if ap else "",
+            )
+            qty(r, rm=rr["rm"])
+            result.append(r)
+        return result
 
     raw_rows = []
     pending_gps = None
