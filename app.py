@@ -113,6 +113,8 @@ def parse_wbv_wasserburg(pages, filename):
         r"(?P<sortiment>.+?)\s+"
         r"(?P<laenge>[\d,]+)\s*m\s+"
         r"(?:(?P<stueck>\d+)\s*Stk\s+)?"
+        # UF/RF: rein technische Zwischenwerte, nicht speichern.
+        r"(?:(?:\d+[.,]\d+)\s+(?:\d+[.,]\d+)\s+)?"
         r"(?:(?P<rm>[\d,]+)\s*RM\s+)?"
         r"(?P<fm>[\d,]+)\s*FM\s*$"
     )
@@ -969,6 +971,88 @@ def parse_pdf_bytes(data, filename):
             row["fraechter"] = fraechter or "Nicht angegeben"
     return best, best_name, attempts
 
+
+
+
+def pruefe_pdf_vollstaendigkeit(data, filename, rows, fmt):
+    """Unabhängiger Positionsabgleich VOR dem Speichern.
+
+    Für jedes unterstützte Format werden sichtbare Positionskennungen
+    aus dem PDF mit den tatsächlich erzeugten Datensätzen verglichen.
+    Unbekannte Layouts erhalten ausdrücklich KEINE grüne Vollständigkeitsmeldung.
+    """
+    pages = pages_from_bytes(data)
+    text = "\n".join(pages)
+    first = pages[0] if pages else ""
+    expected = set()
+    found = set()
+    mode = "unknown"
+
+    if fmt == "WBV Wasserburg":
+        expected = set(re.findall(r"(?m)^\s*(\d{6,9}/\d+/\d+)\b", text))
+        found = {"/".join(str(r.get(k) or "") for k in ("holzliste", "los", "polter_nr")) for r in rows}
+        mode = "positions"
+    elif fmt == "FBG Isar-Lech":
+        # FBG: eine Position kann mehrfach als Sortiment vorkommen; der
+        # gespeicherte Datensatz wird nach Liste/Los/Polter gruppiert.
+        expected = set()
+        for line in first.splitlines():
+            m = re.match(r"^\s*(\d{5,8})\s+(\d{1,5})\s+(\d+(?:\.\d+)?)\s+([A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß0-9.]+)+)\b",line)
+            if m:
+                expected.add("/".join(m.group(i) for i in (1,2,3)))
+        found = {"/".join(str(r.get(k) or "") for k in ("holzliste", "los", "polter_nr")) for r in rows}
+        mode = "positions"
+    elif fmt == "WBV Traunstein":
+        expected = {m.group(1) for line in first.splitlines() if (m:=re.match(r"^\s*(\d{3,7})\s+\d{3,7}\s+[A-Za-zÄÖÜäöüß]{1,4}\s+",line))}
+        found = {str(r.get("polter_nr") or "") for r in rows}
+        mode = "positions"
+    elif fmt == "WBV Ebersberg-München/Ost":
+        # Bei manchen Ebersberg-PDFs fehlt die PNr.-Spalte vollständig;
+        # die Kombination Liste/Los ist dann die unabhängige Position.
+        expected = set()
+        for line in first.splitlines():
+            m = re.match(r"^\s*(\d{3,9})\s+(\d+)\s+(?:\d+\s+)?[A-Za-zÄÖÜäöüß]{1,4}\s+",line)
+            if m:
+                expected.add(f"{m.group(1)}/{m.group(2)}")
+        found = {f'{r.get("holzliste")}/{r.get("los") or r.get("polter_nr")}' for r in rows}
+        mode = "positions"
+    elif fmt in ("WBV Altötting-Burghausen", "München / Stadtwerke"):
+        expected = set()
+        for line in first.splitlines():
+            m = re.match(r"^\s*(\d{4,9})\s+(\d+)\s+(\d+)\s+[A-Za-zÄÖÜäöüß]{1,4}\s+",line)
+            if m:
+                expected.add("/".join(m.group(i) for i in (1,2,3)))
+        found = {"/".join(str(r.get(k) or "") for k in ("holzliste", "los", "polter_nr")) for r in rows}
+        if fmt == "München / Stadtwerke":
+            expected = {"/".join(x.split("/")) for x in expected}
+            found = {"/".join(str(r.get(k) or "") for k in ("hab", "los", "polter_nr")) for r in rows}
+        mode = "positions"
+    elif fmt == "Toerring-Jettenbach":
+        expected = {f"{m.group(1)}/{m.group(2)}" for m in re.finditer(r"Poltererfassung\s*-\s*(\d+)\.\s*(\d+),",text,re.I)}
+        found = {f'{r.get("hab")}/{r.get("polter_nr")}' for r in rows}
+        mode = "positions"
+    elif fmt == "WBV Pfarrkirchen / BayernAtlas":
+        expected = {"1"} if "Waldbesitzer:" in text else set()
+        found = {str(r.get("polter_nr") or "") for r in rows}
+        mode = "positions"
+
+    if not rows:
+        return {"state":"error", "expected":len(expected),"found":0,
+                "message":"Keine Polter erkannt – nichts gespeichert."}
+    if mode != "positions" or not expected:
+        return {"state":"unverified", "expected":len(expected),"found":len(rows),
+                "message":"Vollständigkeit dieses PDF-Layouts nicht sicher prüfbar."}
+    missing = expected - found
+    unexpected = found - expected
+    if missing or unexpected:
+        detail = "; ".join(filter(None, [
+            "Fehlende Positionen: " + ", ".join(sorted(missing)[:12]) if missing else "",
+            "Unklare Positionen: " + ", ".join(sorted(unexpected)[:12]) if unexpected else ""
+        ]))
+        return {"state":"partial", "expected":len(expected),"found":len(found),
+                "message":f"Nur {len(found)} von {len(expected)} Positionen erkannt. {detail}"}
+    return {"state":"complete", "expected":len(expected),"found":len(found),
+            "message":f"Vollständigkeitsprüfung bestanden: {len(found)} von {len(expected)} Positionen."}
 
 # ================= APP =================
 
@@ -2824,50 +2908,48 @@ if app_page == "Bereitstellung einlesen":
         if uploads and st.button("PDFs einlesen", type="primary", key="page_pdf_import"):
             results = []
             for f in uploads:
-                rows, fmt, attempts = parse_pdf_bytes(f.getvalue(), f.name)
-                if not rows:
-                    results.append({"filename": f.name, "state": "error",
-                                    "message": "PDF konnte nicht eingelesen werden."})
-                    continue
-                added = save_rows(rows)
-                if added == 0:
-                    results.append({"filename": f.name, "state": "duplicate",
-                                    "message": "PDF schon hochgeladen."})
-                else:
-                    results.append({"filename": f.name, "state": "success",
-                                    "message": "PDF erfolgreich eingelesen."})
-
+                try:
+                    data = f.getvalue()
+                    rows, fmt, attempts = parse_pdf_bytes(data, f.name)
+                    check = pruefe_pdf_vollstaendigkeit(data, f.name, rows, fmt)
+                    if check["state"] in ("partial", "error"):
+                        # Bei unvollständiger Erkennung NICHT teilweise speichern.
+                        results.append({"filename":f.name,"state":"partial",
+                                        "message":"IMPORT GESTOPPT – " + check["message"]})
+                        continue
+                    if check["state"] == "unverified":
+                        # Keine automatische Speicherung, wenn die vollständige
+                        # Erfassung nicht unabhängig verifiziert werden kann.
+                        results.append({"filename":f.name,"state":"partial",
+                                        "message":"IMPORT GESTOPPT – " + check["message"]})
+                        continue
+                    added = save_rows(rows)
+                    if added == 0:
+                        results.append({"filename":f.name,"state":"duplicate",
+                                        "message":check["message"] + " Bereits vollständig vorhanden (Duplikat)."})
+                    elif added < len(rows):
+                        results.append({"filename":f.name,"state":"warning",
+                                        "message":check["message"] + f" {added} neu gespeichert, {len(rows)-added} bereits vorhanden."})
+                    else:
+                        results.append({"filename":f.name,"state":"success",
+                                        "message":check["message"] + f" {added} Polter gespeichert."})
+                except Exception as exc:
+                    results.append({"filename":f.name,"state":"error",
+                                    "message":f"Importfehler – nichts bestätigt: {exc}"})
             st.session_state["_pdf_import_feedback"] = results
-            st.session_state["_pdf_import_feedback_ts"] = time.time()
             st.rerun()
 
         feedback = st.session_state.get("_pdf_import_feedback", [])
-        feedback_ts = st.session_state.get("_pdf_import_feedback_ts")
-
-        if feedback and feedback_ts is not None:
-            age = time.time() - float(feedback_ts)
-            if age <= 3.0:
-                for item in feedback:
-                    filename = item["filename"]
-                    state = item["state"]
-                    message = item["message"]
-                    if state == "success":
-                        st.toast(f"{message} — {filename}", icon="✅")
-                        st.success(f"✅ **{message}** — {filename}")
-                    elif state == "duplicate":
-                        st.toast(f"{message} — {filename}", icon="ℹ️")
-                        st.warning(f"ℹ️ **{message}** — {filename}")
-                    else:
-                        st.toast(f"{message} — {filename}", icon="❌")
-                        st.error(f"❌ **{message}** — {filename}")
-
-                time.sleep(max(0.0, 3.0 - age))
-                st.session_state.pop("_pdf_import_feedback", None)
-                st.session_state.pop("_pdf_import_feedback_ts", None)
-                st.rerun()
-            else:
-                st.session_state.pop("_pdf_import_feedback", None)
-                st.session_state.pop("_pdf_import_feedback_ts", None)
+        if feedback:
+            st.caption("Importprotokoll – bleibt sichtbar, bis ein neuer Import gestartet wird.")
+            for item in feedback:
+                msg = f'**{item["filename"]}** – {item["message"]}'
+                if item["state"] == "success":
+                    st.success("✅ " + msg)
+                elif item["state"] in ("partial", "warning", "duplicate"):
+                    st.warning("🟠 " + msg)
+                else:
+                    st.error("❌ " + msg)
 
     st.stop()
 
