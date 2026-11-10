@@ -244,7 +244,7 @@ def parse_muenchen(pages, filename):
             bereitstellung=nr.group(1), lieferant=supplier,
             vertragsnummer=contract.group(1) if contract else "",
             datum=date.group(1) if date else "",
-            hab=hab, los=los, polter_nr=pnr, holzart=ha,
+            holzliste=hab, los=los, polter_nr=pnr, holzart=ha,
             sortiment=f"{hs} {gkl}", laenge_m=length, stueck=stck,
             einheit=t[ui], lat=lat, lon=lon, lagerort=lager,
             bemerkung=info, ansprechpartner=ap
@@ -1023,9 +1023,6 @@ def pruefe_pdf_vollstaendigkeit(data, filename, rows, fmt):
             if m:
                 expected.add("/".join(m.group(i) for i in (1,2,3)))
         found = {"/".join(str(r.get(k) or "") for k in ("holzliste", "los", "polter_nr")) for r in rows}
-        if fmt == "München / Stadtwerke":
-            expected = {"/".join(x.split("/")) for x in expected}
-            found = {"/".join(str(r.get(k) or "") for k in ("hab", "los", "polter_nr")) for r in rows}
         mode = "positions"
     elif fmt == "Toerring-Jettenbach":
         expected = {f"{m.group(1)}/{m.group(2)}" for m in re.finditer(r"Poltererfassung\s*-\s*(\d+)\.\s*(\d+),",text,re.I)}
