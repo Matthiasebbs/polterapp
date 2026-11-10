@@ -365,33 +365,65 @@ def parse_wbv_reisbach(pages, filename):
         r"(?P<lon>\d{1,3}[.,]\d{4,8})\s+(?P<lat>\d{1,2}[.,]\d{4,8})"
         r"(?:\s+(?P<rest>.*))?$", re.I
     )
+    # Seite 1 ist die verbindliche Hauptseite. Seite 2 wird AUSSCHLIESSLICH
+    # für die fehlende Menge einer bereits auf Seite 1 gefundenen Position gelesen.
+    row_without_qty = re.compile(
+        r"^\s*(?P<liste>\d{5,9})\s+(?P<los>\d+)\s+(?P<polter>\d+)\s+"
+        r"(?P<ha>[A-Za-zÄÖÜäöüß]+)\s+(?P<hs>[A-Za-zÄÖÜäöüß0-9.-]+)\s+"
+        r"(?P<gkl>[A-Za-zÄÖÜäöüß0-9.-]+)\s+(?P<laenge>\d+(?:[.,]\d+)?)\s+"
+        r"(?P<lon>\d{1,3}[.,]\d{4,8})\s+(?P<lat>\d{1,2}[.,]\d{4,8})"
+        r"(?:\s+(?P<rest>.*))?$", re.I
+    )
+
+    def extract(page, allow_missing):
+        found = {}
+        for line in page.splitlines():
+            line = re.sub(r"\s+", " ", line.strip())
+            m = row_re.match(line)
+            if m:
+                d = m.groupdict()
+            elif allow_missing and (m := row_without_qty.match(line)):
+                d = dict(m.groupdict(), kubatur=None)
+            else:
+                continue
+            key = (d["liste"], d["los"], d["polter"])
+            tail = (d.get("rest") or "").strip()
+            owner = re.search(r"(?:^|\s)([A-ZÄÖÜß-]+\s+[A-ZÄÖÜß-]+\s*\(\d+\))\s*$", tail)
+            d["lagerort"] = tail[:owner.start()].strip() if owner else tail
+            d["owner"] = owner.group(1).strip() if owner else ""
+            # Innerhalb derselben Seite vollständige Datensätze bevorzugen.
+            if key not in found or (not found[key].get("kubatur") and d.get("kubatur")):
+                found[key] = d
+        return found
+
+    positions = extract(first, allow_missing=True)
+    missing = {key for key, d in positions.items() if not d.get("kubatur")}
+    if missing:
+        for page in pages[1:]:
+            supplemental = extract(page, allow_missing=False)
+            for key in list(missing):
+                candidate = supplemental.get(key)
+                if candidate and candidate.get("kubatur"):
+                    # NUR Menge ergänzen: alle anderen Daten bleiben von Seite 1.
+                    positions[key]["kubatur"] = candidate["kubatur"]
+                    missing.remove(key)
+            if not missing:
+                break
+
     rows = []
-    seen = set()
-    for line in first.splitlines():
-        m = row_re.match(re.sub(r"\s+", " ", line.strip()))
-        if not m:
+    for d in positions.values():
+        if not d.get("kubatur"):
+            # Unvollständige Menge darf nicht stillschweigend als 0 gespeichert werden.
             continue
-        d = m.groupdict()
-        key = (d["liste"], d["los"], d["polter"])
-        if key in seen:
-            continue
-        seen.add(key)
-        tail = (d.get("rest") or "").strip()
-        # Der Textlayer trennt Lagerort und Waldbesitzer nicht durch Spalten.
-        # Typischerweise steht am Ende NACHNAME VORNAME (Nummer).
-        owner = re.search(r"(?:^|\s)([A-ZÄÖÜß-]+\s+[A-ZÄÖÜß-]+\s*\(\d+\))\s*$", tail)
-        lagerort = tail[:owner.start()].strip() if owner else tail
-        owner_text = owner.group(1).strip() if owner else ""
         r = empty(filename)
         r.update(
             bereitstellung=nr.group(1).strip(), lieferant="WBV Reisbach",
-            vertragsnummer=contract.group(1).strip() if contract else "",
-            datum=date.group(1) if date else "",
+            vertragsnummer="", datum=date.group(1) if date else "",
             holzliste=d["liste"], los=d["los"], polter_nr=d["polter"],
             holzart=d["ha"], sortiment=f'{d["hs"]} {d["gkl"]}',
             laenge_m=n(d["laenge"]), einheit="FmoR", stueck=None,
-            lat=n(d["lat"]), lon=n(d["lon"]), lagerort=lagerort,
-            bemerkung=f"Waldbesitzer: {owner_text}" if owner_text else ""
+            lat=n(d["lat"]), lon=n(d["lon"]), lagerort=d["lagerort"],
+            bemerkung=f'Waldbesitzer: {d["owner"]}' if d.get("owner") else ""
         )
         qty(r, fm=n(d["kubatur"]))
         rows.append(r)
