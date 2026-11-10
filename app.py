@@ -1567,21 +1567,45 @@ CON = local_db() if SB is None else None
 # Dauerhafte, pro Benutzer eindeutige Lieferantenfarben.
 # Die Farben werden in Supabase (mit RLS) bzw. lokal in SQLite gespeichert.
 def fixed_supplier_colors(names):
+    """Dauerhafte, einzigartige Farben in der gedeckten Hoizplotz-Naturpalette."""
     import hashlib
     import colorsys
 
     names = sorted({str(x).strip() for x in names if str(x).strip()}, key=str.casefold)
     if not names:
         return {}
+
+    # Gedämpfte Wald-, Salbei-, Oliv-, Schiefer-, Erd- und Taupetöne.
+    # Kein Neon, kein grelles Rot, Pink oder Blau.
+    # Die Farbe wird beim ersten Auftreten dauerhaft gespeichert.
+    def color_for(seed, attempt):
+        families = (
+            (112, 148),  # Waldgrün / Salbei
+            (75, 108),   # Oliv / Moos
+            (155, 194),  # gedecktes Petrol
+            (27, 48),    # Erde / Ocker
+            (10, 24),    # gedämpftes Terrakotta
+            (202, 226),  # Schieferblau
+            (250, 278),  # Taupe / Pflaumengrau
+        )
+        family = (seed + attempt) % len(families)
+        lo, hi = families[family]
+        # Goldener-Winkel-Verteilung verhindert identische Farben.
+        fraction = ((seed % 100000) / 100000 + attempt * 0.618033988749895) % 1
+        hue = (lo + (hi - lo) * fraction) / 360
+        saturation = 0.24 + ((seed // 31 + attempt * 7) % 16) / 100
+        lightness = 0.34 + ((seed // 79 + attempt * 11) % 19) / 100
+        rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
+        return "#" + "".join(f"{round(c * 255):02X}" for c in rgb)
+
     uid = str(current_user_id() or "") if SB else "local"
     if SB:
         try:
             existing = SB.table("lieferantenfarben").select("lieferant,farbe").eq("user_id", uid).execute().data or []
-        except Exception as exc:
+        except Exception:
             st.error(
-                "Die dauerhafte Lieferanten-Farbzuordnung ist noch nicht eingerichtet. "
-                "Bitte zuerst das beigefügte SQL in Supabase ausführen. "
-                "Ohne diese Tabelle werden bewusst keine wechselnden Farben vergeben."
+                "Die Lieferantenfarben-Tabelle ist nicht eingerichtet. "
+                "Bitte die beigefügte SQL-Datei in Supabase ausführen."
             )
             st.stop()
     else:
@@ -1592,34 +1616,29 @@ def fixed_supplier_colors(names):
         CON.commit()
         existing = [
             {"lieferant": a, "farbe": b}
-            for a,b in CON.execute("SELECT lieferant,farbe FROM lieferantenfarben").fetchall()
+            for a, b in CON.execute("SELECT lieferant,farbe FROM lieferantenfarben").fetchall()
         ]
 
     mapping = {str(x["lieferant"]): str(x["farbe"]) for x in existing}
     used = set(mapping.values())
+
     for name in names:
         if name in mapping:
             continue
-        # Deterministische Startfarbe; falls schon vergeben, nächste freie
-        # Nuance suchen. Die einmal gespeicherte Farbe wird nie neu berechnet.
         seed = int.from_bytes(hashlib.sha256(name.casefold().encode("utf-8")).digest()[:8], "big")
-        for attempt in range(16777216):
-            hue = ((seed % 36000) / 36000.0 + attempt * 0.618033988749895) % 1
-            sat = 0.43 + ((seed // 36000 + attempt // 360) % 16) / 100
-            light = 0.37 + ((seed // 100000 + attempt // 180) % 18) / 100
-            rgb = colorsys.hls_to_rgb(hue, light, sat)
-            color = "#" + "".join(f"{round(c * 255):02X}" for c in rgb)
+        for attempt in range(100000):
+            color = color_for(seed, attempt)
             if color not in used:
                 break
         else:
-            raise RuntimeError("Keine freie Lieferantenfarbe verfügbar.")
+            raise RuntimeError("Keine eindeutige Lieferantenfarbe verfügbar.")
+
         if SB:
             try:
                 SB.table("lieferantenfarben").insert({
                     "user_id": uid, "lieferant": name, "farbe": color
                 }).execute()
             except Exception:
-                # Bei paralleler Registrierung denselben Eintrag neu lesen.
                 latest = SB.table("lieferantenfarben").select("farbe").eq("user_id",uid).eq("lieferant",name).execute().data or []
                 if not latest:
                     raise
@@ -1629,6 +1648,7 @@ def fixed_supplier_colors(names):
             CON.commit()
         mapping[name] = color
         used.add(color)
+
     return {name: mapping[name] for name in names}
 
 
