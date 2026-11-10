@@ -342,6 +342,62 @@ def parse_wbv_ebersberg(pages, filename):
     return rows
 
 
+def parse_wbv_reisbach(pages, filename):
+    """WBV Reisbach: HAB ist die Listen-Nr.; Seite 2 wiederholt die Positionen."""
+    first = pages[0] if pages else ""
+    if "Waldbauernvereinigung Reisbach" not in first or "Polterinformation:" not in first:
+        return []
+    nr = re.search(r"(?m)^\s*(BM\d{5,9}(?:[ \t]+[A-Za-zÄÖÜäöüß0-9&.-]+)?)\s*$", first)
+    if not nr:
+        nr = re.search(r"Bereitstellungsanzeige\s+Nr\.\s*(BM\d{5,9}(?:[ \t]+[A-Za-zÄÖÜäöüß0-9&.-]+)?)", first, re.I)
+    if not nr:
+        return []
+    date = re.search(r"Datum:\s*(\d{2}\.\d{2}\.\d{4})", first)
+    contract = re.search(r"Kaufvertragsnr\.:\s*([^\n]*)", first)
+    contract = None  # Kein Vertragswert im Beleg angegeben.
+    # Tabelle: HAB Los PNr. HA HS GKL Länge Kubatur Koord X Koord Y Lagerort Waldbesitzer
+    # In diesem Format ist Koord X der Längengrad, Koord Y der Breitengrad.
+    row_re = re.compile(
+        r"^\s*(?P<liste>\d{5,9})\s+(?P<los>\d+)\s+(?P<polter>\d+)\s+"
+        r"(?P<ha>[A-Za-zÄÖÜäöüß]+)\s+(?P<hs>[A-Za-zÄÖÜäöüß0-9.-]+)\s+"
+        r"(?P<gkl>[A-Za-zÄÖÜäöüß0-9.-]+)\s+"
+        r"(?P<laenge>\d+(?:[.,]\d+)?)\s+(?P<kubatur>\d+(?:[.,]\d+)?)\s+"
+        r"(?P<lon>\d{1,3}[.,]\d{4,8})\s+(?P<lat>\d{1,2}[.,]\d{4,8})"
+        r"(?:\s+(?P<rest>.*))?$", re.I
+    )
+    rows = []
+    seen = set()
+    for line in first.splitlines():
+        m = row_re.match(re.sub(r"\s+", " ", line.strip()))
+        if not m:
+            continue
+        d = m.groupdict()
+        key = (d["liste"], d["los"], d["polter"])
+        if key in seen:
+            continue
+        seen.add(key)
+        tail = (d.get("rest") or "").strip()
+        # Der Textlayer trennt Lagerort und Waldbesitzer nicht durch Spalten.
+        # Typischerweise steht am Ende NACHNAME VORNAME (Nummer).
+        owner = re.search(r"(?:^|\s)([A-ZÄÖÜß-]+\s+[A-ZÄÖÜß-]+\s*\(\d+\))\s*$", tail)
+        lagerort = tail[:owner.start()].strip() if owner else tail
+        owner_text = owner.group(1).strip() if owner else ""
+        r = empty(filename)
+        r.update(
+            bereitstellung=nr.group(1).strip(), lieferant="WBV Reisbach",
+            vertragsnummer=contract.group(1).strip() if contract else "",
+            datum=date.group(1) if date else "",
+            holzliste=d["liste"], los=d["los"], polter_nr=d["polter"],
+            holzart=d["ha"], sortiment=f'{d["hs"]} {d["gkl"]}',
+            laenge_m=n(d["laenge"]), einheit="FmoR", stueck=None,
+            lat=n(d["lat"]), lon=n(d["lon"]), lagerort=lagerort,
+            bemerkung=f"Waldbesitzer: {owner_text}" if owner_text else ""
+        )
+        qty(r, fm=n(d["kubatur"]))
+        rows.append(r)
+    return rows
+
+
 def parse_wbv_traunstein(pages, filename):
     """
     Parser für Bereitstellungen der WBV Traunstein.
@@ -945,6 +1001,7 @@ PARSERS = [
     ("München / Stadtwerke", parse_muenchen),
     ("WBV Ebersberg-München/Ost", parse_wbv_ebersberg),
     ("WBV Traunstein", parse_wbv_traunstein),
+    ("WBV Reisbach", parse_wbv_reisbach),
     ("WBV Altötting-Burghausen", parse_wbv_altoetting),
     ("FBG Isar-Lech", parse_fbg_isar_lech),
     ("Toerring-Jettenbach", parse_toerring),
@@ -1000,6 +1057,15 @@ def pruefe_pdf_vollstaendigkeit(data, filename, rows, fmt):
             m = re.match(r"^\s*(\d{5,8})\s+(\d{1,5})\s+(\d+(?:\.\d+)?)\s+([A-Za-zÄÖÜäöüß]+(?:-[A-Za-zÄÖÜäöüß0-9.]+)+)\b",line)
             if m:
                 expected.add("/".join(m.group(i) for i in (1,2,3)))
+        found = {"/".join(str(r.get(k) or "") for k in ("holzliste", "los", "polter_nr")) for r in rows}
+        mode = "positions"
+    elif fmt == "WBV Reisbach":
+        # Nur Seite 1 zählt: die Folgeseite zeigt dieselben Polter nochmals.
+        expected = set()
+        for line in first.splitlines():
+            m = re.match(r"^\s*(\d{5,9})\s+(\d+)\s+(\d+)\s+[A-Za-zÄÖÜäöüß]{1,4}\s+", line)
+            if m:
+                expected.add("/".join(m.group(i) for i in (1, 2, 3)))
         found = {"/".join(str(r.get(k) or "") for k in ("holzliste", "los", "polter_nr")) for r in rows}
         mode = "positions"
     elif fmt == "WBV Traunstein":
