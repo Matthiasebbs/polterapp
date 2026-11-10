@@ -1564,6 +1564,74 @@ def local_db():
 
 CON = local_db() if SB is None else None
 
+# Dauerhafte, pro Benutzer eindeutige Lieferantenfarben.
+# Die Farben werden in Supabase (mit RLS) bzw. lokal in SQLite gespeichert.
+def fixed_supplier_colors(names):
+    import hashlib
+    import colorsys
+
+    names = sorted({str(x).strip() for x in names if str(x).strip()}, key=str.casefold)
+    if not names:
+        return {}
+    uid = str(current_user_id() or "") if SB else "local"
+    if SB:
+        try:
+            existing = SB.table("lieferantenfarben").select("lieferant,farbe").eq("user_id", uid).execute().data or []
+        except Exception as exc:
+            st.error(
+                "Die dauerhafte Lieferanten-Farbzuordnung ist noch nicht eingerichtet. "
+                "Bitte zuerst das beigefügte SQL in Supabase ausführen. "
+                "Ohne diese Tabelle werden bewusst keine wechselnden Farben vergeben."
+            )
+            st.stop()
+    else:
+        CON.execute(
+            "CREATE TABLE IF NOT EXISTS lieferantenfarben "
+            "(lieferant TEXT PRIMARY KEY, farbe TEXT NOT NULL UNIQUE)"
+        )
+        CON.commit()
+        existing = [
+            {"lieferant": a, "farbe": b}
+            for a,b in CON.execute("SELECT lieferant,farbe FROM lieferantenfarben").fetchall()
+        ]
+
+    mapping = {str(x["lieferant"]): str(x["farbe"]) for x in existing}
+    used = set(mapping.values())
+    for name in names:
+        if name in mapping:
+            continue
+        # Deterministische Startfarbe; falls schon vergeben, nächste freie
+        # Nuance suchen. Die einmal gespeicherte Farbe wird nie neu berechnet.
+        seed = int.from_bytes(hashlib.sha256(name.casefold().encode("utf-8")).digest()[:8], "big")
+        for attempt in range(16777216):
+            hue = ((seed % 36000) / 36000.0 + attempt * 0.618033988749895) % 1
+            sat = 0.43 + ((seed // 36000 + attempt // 360) % 16) / 100
+            light = 0.37 + ((seed // 100000 + attempt // 180) % 18) / 100
+            rgb = colorsys.hls_to_rgb(hue, light, sat)
+            color = "#" + "".join(f"{round(c * 255):02X}" for c in rgb)
+            if color not in used:
+                break
+        else:
+            raise RuntimeError("Keine freie Lieferantenfarbe verfügbar.")
+        if SB:
+            try:
+                SB.table("lieferantenfarben").insert({
+                    "user_id": uid, "lieferant": name, "farbe": color
+                }).execute()
+            except Exception:
+                # Bei paralleler Registrierung denselben Eintrag neu lesen.
+                latest = SB.table("lieferantenfarben").select("farbe").eq("user_id",uid).eq("lieferant",name).execute().data or []
+                if not latest:
+                    raise
+                color = latest[0]["farbe"]
+        else:
+            CON.execute("INSERT INTO lieferantenfarben(lieferant,farbe) VALUES (?,?)", (name,color))
+            CON.commit()
+        mapping[name] = color
+        used.add(color)
+    return {name: mapping[name] for name in names}
+
+
 def df_all():
     if SB:
         data = SB.table("polter").select("*").eq("user_id", current_user_id()).order("id", desc=True).execute().data
@@ -2825,8 +2893,9 @@ if app_page == "Start":
         if map_pts.empty: st.info("Aktuell sind keine offenen Polter mit Standort vorhanden.")
         else:
             suppliers=sorted([str(x) for x in map_pts["lieferant"].fillna("").unique().tolist() if str(x)])
-            palette=["#315C46","#7B8F3A","#A56A2A","#4F7F86","#7A6A5A","#3D6B4F","#8C5B3D","#6A8247","#5A6F78","#725F7D"]
-            colors={name:palette[i%len(palette)] for i,name in enumerate(suppliers)}
+            colors=fixed_supplier_colors(
+                dash_df["lieferant"].fillna("").astype(str).tolist()
+            )
             mp=folium.Map(location=[float(map_pts["lat"].mean()),float(map_pts["lon"].mean())],zoom_start=8,tiles="OpenStreetMap")
             for _,r in map_pts.iterrows():
                 supplier=str(r.get("lieferant") or ""); liste=str(r.get("holzliste") or "-"); los=str(r.get("los") or "-"); polter=str(r.get("polter_nr") or "-")
@@ -3099,24 +3168,8 @@ wood_choice = [] if wood_single == "Alle Holzarten" else [wood_single]
 length_choice = [] if length_single == "Alle Längen" else [length_single]
 status_choice = [] if status_single == "Alle Status" else [status_single]
 
-# Feste Lieferantenfarben für die Karte.
-# Die Zuordnung bleibt stabil, solange die Lieferantennamen gleich bleiben.
-SUPPLIER_COLORS = [
-    "#0F5A38",  # tiefes Tannengrün
-    "#7B8F3A",  # Moos / Olive
-    "#A56A2A",  # Holz / Ocker
-    "#4F7F86",  # Schiefer-Türkis
-    "#7A6A5A",  # Rindengrau
-    "#3D6B4F",  # Waldgrün
-    "#8C5B3D",  # Kastanienbraun
-    "#6A8247",  # Farn
-    "#5A6F78",  # kühles Schiefergrau
-    "#725F7D",  # gedecktes Pflaume
-]
-supplier_color_map = {
-    name: SUPPLIER_COLORS[i % len(SUPPLIER_COLORS)]
-    for i, name in enumerate(sorted(supplier_values))
-}
+# Dieselbe dauerhafte Farbzuordnung für alle Karten, Listen und Legenden.
+supplier_color_map = fixed_supplier_colors(supplier_values)
 
 
 def polter_pin_html(color, size=42):
