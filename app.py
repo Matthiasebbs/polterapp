@@ -2673,29 +2673,76 @@ if AUTH_SB and not current_user_id():
                     st.error("Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen.")
     st.stop()
 
-# Pin-Helfer früh verfügbar machen.
-def polter_pin_html(color, size=42):
+# Pin-Helfer und Abfuhrberechnung vor allen Kartenansichten definieren.
+def polter_abfuhr_anteil(row):
+    """Anteil der Abfuhr an der ursprünglichen Poltermenge, 0 bis 1."""
+    def val(key):
+        try:
+            x = float(row.get(key))
+            return x if math.isfinite(x) else None
+        except (TypeError, ValueError):
+            return None
+    # Immer Original und Rest in derselben Einheit vergleichen.
+    for original_key, aktuell_key in (
+        ("menge_rm_original", "menge_rm_aktuell"),
+        ("kubatur_fm_original", "kubatur_fm_aktuell"),
+    ):
+        original, aktuell = val(original_key), val(aktuell_key)
+        if original is not None and original > 0 and aktuell is not None:
+            return max(0.0, min(1.0, (original - aktuell) / original))
+    return 0.0
+
+
+def polter_pin_html(color, size=42, abgefahren_anteil=0.0):
+    """
+    Forst-Pin mit Holzpyramide aus Stammenden:
+    unten 3 Kreise, darüber 2, oben 1.
+    """
     w = int(size)
     h = int(size * 1.22)
+    anteil = max(0.0, min(1.0, float(abgefahren_anteil or 0.0)))
+    umfang = 2 * math.pi * 30.7
+    schwarz = umfang * anteil
+    ring = f"""
+            <!-- Außenring in Lieferantenfarbe, schwarz = abgefahrener Anteil. -->
+            <circle cx="32" cy="29.5" r="30.7" fill="none"
+                    stroke="{color}" stroke-width="3.8"/>
+            <circle cx="32" cy="29.5" r="30.7" fill="none"
+                    stroke="#171C19" stroke-width="3.8"
+                    stroke-dasharray="{schwarz:.3f} {umfang:.3f}"
+                    transform="rotate(-90 32 29.5)"/>
+    """ if anteil > 0.00001 else ""
     return f"""
     <div class="polter-marker-wrap" style="
-        width:{w}px;height:{h}px;position:relative;transform-origin:50% 100%;
+        width:{w}px;
+        height:{h}px;
+        position:relative;
+        transform-origin:50% 100%;
         filter:drop-shadow(0 2px 3px rgba(18,35,24,.24));
+        transition:transform .14s ease-out;
     ">
         <svg viewBox="0 0 64 78" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">
-            <path d="M32 3 C15.5 3 5 14.2 5 29.5 C5 44 17 57.2 32 75
-                     C47 57.2 59 44 59 29.5 C59 14.2 48.5 3 32 3 Z"
-                  fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
+            <path d="
+                M32 3
+                C15.5 3 5 14.2 5 29.5
+                C5 44 17 57.2 32 75
+                C47 57.2 59 44 59 29.5
+                C59 14.2 48.5 3 32 3 Z"
+                fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
+            {ring}
+
+            <!-- Holzpyramide: 1 / 2 / 3 -->
             <g stroke="#F5F1E7" stroke-width="2.5" fill="none">
                 <circle cx="32" cy="24" r="4.4"/>
-                <circle cx="26" cy="33" r="4.4"/><circle cx="38" cy="33" r="4.4"/>
-                <circle cx="20" cy="42" r="4.4"/><circle cx="32" cy="42" r="4.4"/>
+                <circle cx="26" cy="33" r="4.4"/>
+                <circle cx="38" cy="33" r="4.4"/>
+                <circle cx="20" cy="42" r="4.4"/>
+                <circle cx="32" cy="42" r="4.4"/>
                 <circle cx="44" cy="42" r="4.4"/>
             </g>
         </svg>
     </div>
     """
-
 
 
 def hoiz_icon(name, size=25):
@@ -3290,76 +3337,6 @@ status_choice = [] if status_single == "Alle Status" else [status_single]
 # Dieselbe dauerhafte Farbzuordnung für alle Karten, Listen und Legenden.
 supplier_color_map = fixed_supplier_colors(supplier_values)
 
-
-def polter_abfuhr_anteil(row):
-    """Anteil der Abfuhr an der ursprünglichen Poltermenge, 0 bis 1."""
-    def val(key):
-        try:
-            x = float(row.get(key))
-            return x if math.isfinite(x) else None
-        except (TypeError, ValueError):
-            return None
-    # Immer Original und Rest in derselben Einheit vergleichen.
-    for original_key, aktuell_key in (
-        ("menge_rm_original", "menge_rm_aktuell"),
-        ("kubatur_fm_original", "kubatur_fm_aktuell"),
-    ):
-        original, aktuell = val(original_key), val(aktuell_key)
-        if original is not None and original > 0 and aktuell is not None:
-            return max(0.0, min(1.0, (original - aktuell) / original))
-    return 0.0
-
-
-def polter_pin_html(color, size=42, abgefahren_anteil=0.0):
-    """
-    Forst-Pin mit Holzpyramide aus Stammenden:
-    unten 3 Kreise, darüber 2, oben 1.
-    """
-    w = int(size)
-    h = int(size * 1.22)
-    anteil = max(0.0, min(1.0, float(abgefahren_anteil or 0.0)))
-    umfang = 2 * math.pi * 30.7
-    schwarz = umfang * anteil
-    ring = f"""
-            <!-- Außenring in Lieferantenfarbe, schwarz = abgefahrener Anteil. -->
-            <circle cx="32" cy="29.5" r="30.7" fill="none"
-                    stroke="{color}" stroke-width="3.8"/>
-            <circle cx="32" cy="29.5" r="30.7" fill="none"
-                    stroke="#171C19" stroke-width="3.8"
-                    stroke-dasharray="{schwarz:.3f} {umfang:.3f}"
-                    transform="rotate(-90 32 29.5)"/>
-    """ if anteil > 0.00001 else ""
-    return f"""
-    <div class="polter-marker-wrap" style="
-        width:{w}px;
-        height:{h}px;
-        position:relative;
-        transform-origin:50% 100%;
-        filter:drop-shadow(0 2px 3px rgba(18,35,24,.24));
-        transition:transform .14s ease-out;
-    ">
-        <svg viewBox="0 0 64 78" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">
-            <path d="
-                M32 3
-                C15.5 3 5 14.2 5 29.5
-                C5 44 17 57.2 32 75
-                C47 57.2 59 44 59 29.5
-                C59 14.2 48.5 3 32 3 Z"
-                fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
-            {ring}
-
-            <!-- Holzpyramide: 1 / 2 / 3 -->
-            <g stroke="#F5F1E7" stroke-width="2.5" fill="none">
-                <circle cx="32" cy="24" r="4.4"/>
-                <circle cx="26" cy="33" r="4.4"/>
-                <circle cx="38" cy="33" r="4.4"/>
-                <circle cx="20" cy="42" r="4.4"/>
-                <circle cx="32" cy="42" r="4.4"/>
-                <circle cx="44" cy="42" r="4.4"/>
-            </g>
-        </svg>
-    </div>
-    """
 
 def polter_list_icon_data_uri(color):
     """
