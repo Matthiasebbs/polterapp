@@ -1,3 +1,4 @@
+import math
 
 import io
 import zipfile
@@ -3018,7 +3019,7 @@ if app_page == "Start":
             for _,r in map_pts.iterrows():
                 supplier=str(r.get("lieferant") or ""); liste=str(r.get("holzliste") or "-"); los=str(r.get("los") or "-"); polter=str(r.get("polter_nr") or "-")
                 pop=f"<b>{supplier or '-'}</b><br>Frächter: {r.get('fraechter') or '-'}<br>Bereitstellung: {r.get('bereitstellung') or '-'}<br>Liste: {liste}<br>Los: {los}<br>Polter: {polter}<br>Lagerort: {r.get('lagerort') or '-'}<br>Holzart: {r.get('holzart') or '-'} {r.get('sortiment') or ''}<br>RM aktuell: {r.get('menge_rm_aktuell') if pd.notna(r.get('menge_rm_aktuell')) else '-'}"
-                folium.Marker([float(r["lat"]),float(r["lon"])],tooltip=f"{supplier} · {r.get('bereitstellung') or ''} · Liste {liste} · Los {los} · Polter {polter}",popup=folium.Popup(pop,max_width=380),icon=folium.DivIcon(html=polter_pin_html(colors.get(supplier,"#3D6B4F"),size=38),icon_size=(38,46),icon_anchor=(19,46),class_name="polter-div-icon")).add_to(mp)
+                folium.Marker([float(r["lat"]),float(r["lon"])],tooltip=f"{supplier} · {r.get('bereitstellung') or ''} · Liste {liste} · Los {los} · Polter {polter}",popup=folium.Popup(pop,max_width=380),icon=folium.DivIcon(html=polter_pin_html(colors.get(supplier,"#3D6B4F"),size=38,abgefahren_anteil=polter_abfuhr_anteil(r)),icon_size=(38,46),icon_anchor=(19,46),class_name="polter-div-icon")).add_to(mp)
             st_folium(mp,use_container_width=True,height=430,key="dashboard_polter_map",returned_objects=[])
 
     with act_col:
@@ -3290,13 +3291,44 @@ status_choice = [] if status_single == "Alle Status" else [status_single]
 supplier_color_map = fixed_supplier_colors(supplier_values)
 
 
-def polter_pin_html(color, size=42):
+def polter_abfuhr_anteil(row):
+    """Anteil der Abfuhr an der ursprünglichen Poltermenge, 0 bis 1."""
+    def val(key):
+        try:
+            x = float(row.get(key))
+            return x if math.isfinite(x) else None
+        except (TypeError, ValueError):
+            return None
+    # Immer Original und Rest in derselben Einheit vergleichen.
+    for original_key, aktuell_key in (
+        ("menge_rm_original", "menge_rm_aktuell"),
+        ("kubatur_fm_original", "kubatur_fm_aktuell"),
+    ):
+        original, aktuell = val(original_key), val(aktuell_key)
+        if original is not None and original > 0 and aktuell is not None:
+            return max(0.0, min(1.0, (original - aktuell) / original))
+    return 0.0
+
+
+def polter_pin_html(color, size=42, abgefahren_anteil=0.0):
     """
     Forst-Pin mit Holzpyramide aus Stammenden:
     unten 3 Kreise, darüber 2, oben 1.
     """
     w = int(size)
     h = int(size * 1.22)
+    anteil = max(0.0, min(1.0, float(abgefahren_anteil or 0.0)))
+    umfang = 2 * math.pi * 30.7
+    schwarz = umfang * anteil
+    ring = f"""
+            <!-- Außenring in Lieferantenfarbe, schwarz = abgefahrener Anteil. -->
+            <circle cx="32" cy="29.5" r="30.7" fill="none"
+                    stroke="{color}" stroke-width="3.8"/>
+            <circle cx="32" cy="29.5" r="30.7" fill="none"
+                    stroke="#171C19" stroke-width="3.8"
+                    stroke-dasharray="{schwarz:.3f} {umfang:.3f}"
+                    transform="rotate(-90 32 29.5)"/>
+    """ if anteil > 0.00001 else ""
     return f"""
     <div class="polter-marker-wrap" style="
         width:{w}px;
@@ -3314,6 +3346,7 @@ def polter_pin_html(color, size=42):
                 C47 57.2 59 44 59 29.5
                 C59 14.2 48.5 3 32 3 Z"
                 fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
+            {ring}
 
             <!-- Holzpyramide: 1 / 2 / 3 -->
             <g stroke="#F5F1E7" stroke-width="2.5" fill="none">
@@ -3574,7 +3607,7 @@ if app_page == "Polter verwalten":
                 ),
                 popup=folium.Popup(pop, max_width=380),
                 icon=folium.DivIcon(
-                    html=polter_pin_html(supplier_color, size=42),
+                    html=polter_pin_html(supplier_color, size=42, abgefahren_anteil=polter_abfuhr_anteil(r)),
                     icon_size=(42, 51),
                     icon_anchor=(21, 51),
                     class_name="polter-div-icon"
@@ -3874,7 +3907,8 @@ if app_page == "Polter verwalten":
                 icon=folium.DivIcon(
                     html=polter_pin_html(
                         supplier_color_map.get(str(rr["lieferant"]), "#315C46"),
-                        size=36
+                        size=36,
+                        abgefahren_anteil=polter_abfuhr_anteil(rr)
                     ),
                     icon_size=(36, 44),
                     icon_anchor=(18, 44),
@@ -4211,7 +4245,7 @@ if app_page == "Abfuhr":
                 ),
                 popup=folium.Popup(pop, max_width=380),
                 icon=folium.DivIcon(
-                    html=polter_pin_html(supplier_color, size=42),
+                    html=polter_pin_html(supplier_color, size=42, abgefahren_anteil=polter_abfuhr_anteil(r)),
                     icon_size=(42, 51),
                     icon_anchor=(21, 51),
                     class_name="polter-div-icon"
