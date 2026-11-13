@@ -2730,6 +2730,10 @@ def polter_pin_html(color, size=42, abgefahren_anteil=0.0):
                 C59 14.2 48.5 3 32 3 Z"
                 fill="{color}" stroke="#F5F1E7" stroke-width="3"/>
             {ring}
+            <!-- Feine weisse Aussenkontur um den Fortschrittsring.
+                 Die Lieferantenfarbe und der neonpinke Fortschritt bleiben sichtbar. -->
+            <circle cx="32" cy="29.5" r="30.0" fill="none"
+                    stroke="#FFFFFF" stroke-width="1.35"/>
 
             <!-- Holzpyramide: 1 / 2 / 3 -->
             <g stroke="#F5F1E7" stroke-width="2.5" fill="none">
