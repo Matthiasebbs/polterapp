@@ -2702,14 +2702,14 @@ def polter_pin_html(color, size=42, abgefahren_anteil=0.0):
     h = int(size * 1.22)
     anteil = max(0.0, min(1.0, float(abgefahren_anteil or 0.0)))
     umfang = 2 * math.pi * 26.5
-    schwarz = umfang * anteil
+    fortschritt = umfang * anteil
     ring = f"""
-            <!-- Neonpinkfarbener Fortschrittsring, schwarz = abgefahrener Anteil. -->
+            <!-- Grundring = Lieferantenfarbe; Neonpink = abgefahrener Anteil. -->
             <circle cx="32" cy="29.5" r="26.5" fill="none"
-                    stroke="#FF10A8" stroke-width="5.5"/>
+                    stroke="{color}" stroke-width="5.5"/>
             <circle cx="32" cy="29.5" r="26.5" fill="none"
-                    stroke="#171C19" stroke-width="5.5"
-                    stroke-dasharray="{schwarz:.3f} {umfang:.3f}"
+                    stroke="#FF10A8" stroke-width="5.5"
+                    stroke-dasharray="{fortschritt:.3f} {umfang:.3f}"
                     transform="rotate(-90 32 29.5)"/>
     """
     return f"""
