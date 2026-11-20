@@ -451,14 +451,14 @@ def parse_wbv_traunstein(pages, filename):
 
     nr = (
         re.search(r"Bereitstellungsnummer:[ \t]*([A-Z0-9_\-]+)", first, re.I)
-        or re.search(r"(?m)^\s*(BM-\d{2}-\d{4}(?:_[A-Za-z0-9&.-]+)?)\s*$", first, re.I)
+        or re.search(r"(?m)^\s*(BM-\d{2}-\d{4}(?:_[A-Za-z0-9&.-]+)*)\s*$", first, re.I)
         or re.search(r"\b(BM-\d{2}-\d{4})\b", first, re.I)
     )
     if not nr:
         return []
 
     date = re.search(r"Bereitstellungsdatum:\s*(\d{2}\.\d{2}\.\d{4})", first, re.I)
-    contract = re.search(r"Vertrag:\s*([^\n]+)", first, re.I)
+    contract = re.search(r"Vertrag:[ \t]*([^\n]*)", first, re.I)
 
     # Frächter aus dem Kopf der WBV-Traunstein-Bereitstellung.
     # Unterstützt z. B.:
@@ -524,7 +524,7 @@ def parse_wbv_traunstein(pages, filename):
             fraechter=carrier,
             vertragsnummer=contract.group(1).strip() if contract else "",
             datum=date.group(1) if date else "",
-            hab=d["hab"],
+            holzliste=d["hab"],
             polter_nr=d["polter"],
             holzart=d["holzart"],
             sortiment=d["sorte"],
